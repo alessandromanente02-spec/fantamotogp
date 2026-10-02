@@ -515,7 +515,8 @@ async function rpc(fn, args) {
   const key = S.config.supabase_anon_key;
   const headers = { apikey: key, "Content-Type": "application/json" };
   if (key.startsWith("eyJ")) headers.Authorization = "Bearer " + key;
-  const r = await fetch(S.config.supabase_url.replace(/\/$/, "") + "/rest/v1/rpc/" + fn,
+  const base = S.config.supabase_url.trim().replace(/\/+$/, "").replace(/\/rest\/v1$/, "");
+  const r = await fetch(base + "/rest/v1/rpc/" + fn,
     { method: "POST", headers, body: JSON.stringify(args) });
   if (!r.ok) throw new Error("Server non raggiungibile (" + r.status + ")");
   return r.json();
