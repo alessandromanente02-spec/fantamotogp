@@ -788,6 +788,17 @@ document.getElementById("theme-btn").addEventListener("click", () => {
 });
 
 /* ---------------------------------------------------------------- avvio */
+const SPLASH_MIN_MS = 900;
+const splashStart = Date.now();
+function hideSplash() {
+  const el = document.getElementById("splash");
+  if (!el) return;
+  setTimeout(() => {
+    el.classList.add("via");
+    setTimeout(() => el.remove(), 600);
+  }, Math.max(0, SPLASH_MIN_MS - (Date.now() - splashStart)));
+}
+
 (async function init() {
   try {
     [S.league, S.standings, S.season, S.config] = await Promise.all([
@@ -795,10 +806,12 @@ document.getElementById("theme-btn").addEventListener("click", () => {
       getJSON("data/season.json"), getJSON("data/config.json").catch(() => ({}))]);
   } catch (e) {
     view.innerHTML = `<div class="card pad"><div class="alert ko">Impossibile caricare i dati (${esc(e.message)}).</div></div>`;
+    hideSplash();
     return;
   }
   window.addEventListener("hashchange", route);
-  route();
+  await route();
+  hideSplash();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
     navigator.serviceWorker.register("sw.js").catch(() => {});
   }

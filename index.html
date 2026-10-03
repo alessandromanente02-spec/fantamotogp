@@ -9,6 +9,7 @@
   <meta name="theme-color" content="#f4f5f8" media="(prefers-color-scheme: light)">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -20,9 +21,16 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <!-- Schermata di apertura: per cambiare le scritte modifica le due righe qui sotto -->
+  <div id="splash" aria-hidden="true">
+    <img src="icons/icon.svg" alt="" class="splash-logo">
+    <div class="splash-title">Daghe polso!</div>
+    <div class="splash-sub">FantaMotoGP league 2026</div>
+  </div>
+
   <header class="topbar">
     <a href="#/" class="brand" aria-label="Home">
-      <span class="brand-mark">FM</span>
+      <img src="icons/icon.svg" alt="" class="brand-mark">
       <span class="brand-text">Fanta<b>MotoGP</b><small>2026</small></span>
     </a>
     <nav class="top-actions">

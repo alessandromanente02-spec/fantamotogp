@@ -92,12 +92,37 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 10px; }
-.brand-mark {
-  display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px;
-  background: var(--accent); color: #fff; font-weight: 900; font-style: italic;
-  letter-spacing: -.5px; font-size: 15px;
-  clip-path: polygon(12% 0, 100% 0, 88% 100%, 0 100%);
+.brand-mark { width: 36px; height: 36px; display: block; flex: none; }
+
+/* ---------- schermata di apertura ---------- */
+#splash {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  padding: 24px; text-align: center;
+  background: radial-gradient(120% 80% at 50% 30%, #1c2232 0%, #07090d 70%);
+  color: #f2f4f8;
+  transition: opacity .45s ease, visibility .45s;
 }
+#splash.via { opacity: 0; visibility: hidden; }
+.splash-logo {
+  width: min(52vw, 230px); height: auto; margin-bottom: 18px;
+  border-radius: 22%;
+  box-shadow: 0 18px 50px rgba(225, 6, 0, .28);
+  animation: splash-in .7s cubic-bezier(.2, .8, .2, 1) both;
+}
+.splash-title {
+  font-size: clamp(30px, 9vw, 42px); font-weight: 900; font-style: italic; letter-spacing: -.5px;
+  line-height: 1.05; padding: 0 .12em;       /* il corsivo non viene tagliato */
+  background: linear-gradient(90deg, #ffe14a, #ff5a1f 45%, #ff2d87);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: splash-up .6s .25s ease both;
+}
+.splash-sub {
+  font-size: 15px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; color: #8d95a8;
+  animation: splash-up .6s .4s ease both;
+}
+@keyframes splash-in { from { opacity: 0; transform: translateX(-40px) scale(.92); } to { opacity: 1; transform: none; } }
+@keyframes splash-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 .brand-text { font-size: 19px; font-weight: 600; letter-spacing: -.2px; }
 .brand-text b { font-weight: 900; font-style: italic; }
 .brand-text small { margin-left: 6px; font-size: 12px; color: var(--muted); font-weight: 700; }
