@@ -18,7 +18,39 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@400;600;700;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=3d6fc914d2">
+  <!-- stile della schermata di apertura qui dentro: funziona anche se il telefono
+       ha ancora in memoria uno styles.css vecchio -->
+  <style>
+    #splash {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+      padding: 24px; text-align: center;
+      background: radial-gradient(120% 80% at 50% 30%, #1c2232 0%, #07090d 70%);
+      color: #f2f4f8; font-family: "Titillium Web", system-ui, sans-serif;
+      transition: opacity .45s ease, visibility .45s;
+    }
+    #splash.via { opacity: 0; visibility: hidden; }
+    .splash-logo {
+      width: min(52vw, 230px); height: auto; margin-bottom: 18px; border-radius: 22%;
+      box-shadow: 0 18px 50px rgba(225, 6, 0, .28);
+      animation: splash-in .7s cubic-bezier(.2, .8, .2, 1) both;
+    }
+    .splash-title {
+      font-size: clamp(30px, 9vw, 42px); font-weight: 900; font-style: italic; letter-spacing: -.5px;
+      line-height: 1.05; padding: 0 .12em;
+      background: linear-gradient(90deg, #ffe14a, #ff5a1f 45%, #ff2d87);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      animation: splash-up .6s .25s ease both;
+    }
+    .splash-sub {
+      font-size: 15px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; color: #8d95a8;
+      animation: splash-up .6s .4s ease both;
+    }
+    @keyframes splash-in { from { opacity: 0; transform: translateX(-40px) scale(.92); } to { opacity: 1; transform: none; } }
+    @keyframes splash-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) { #splash, #splash * { animation: none !important; transition: none !important; } }
+  </style>
 </head>
 <body>
   <!-- Schermata di apertura: per cambiare le scritte modifica le due righe qui sotto -->
@@ -27,6 +59,10 @@
     <div class="splash-title">Daghe polso!</div>
     <div class="splash-sub">FantaMotoGP league 2026</div>
   </div>
+  <script>
+    // paracadute: se app.js non la toglie (es. versione vecchia in memoria), sparisce comunque
+    setTimeout(function () { var s = document.getElementById("splash"); if (s) s.remove(); }, 6000);
+  </script>
 
   <header class="topbar">
     <a href="#/" class="brand" aria-label="Home">
@@ -74,6 +110,6 @@
   </nav>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
-  <script src="app.js" defer></script>
+  <script src="app.js?v=443d30d3ca" defer></script>
 </body>
 </html>

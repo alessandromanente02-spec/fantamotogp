@@ -1,1 +1,96 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512"><image href="icon.png" xlink:href="icon.png" width="512" height="512"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c2232"/>
+      <stop offset="1" stop-color="#07090d"/>
+    </linearGradient>
+    <linearGradient id="carena" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff4a2e"/>
+      <stop offset=".55" stop-color="#e10600"/>
+      <stop offset="1" stop-color="#8f0400"/>
+    </linearGradient>
+    <linearGradient id="casco" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#c9ced8"/>
+    </linearGradient>
+    <linearGradient id="cupolino" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6b7488" stop-opacity=".9"/>
+      <stop offset="1" stop-color="#0b0d12" stop-opacity=".95"/>
+    </linearGradient>
+    <!-- flussi: dal muso (destra) verso la coda (sinistra) -->
+    <linearGradient id="f1" x1="1" y1="0" x2="0" y2="0">
+      <stop offset="0" stop-color="#ffe14a"/><stop offset="1" stop-color="#ff5a1f"/>
+    </linearGradient>
+    <linearGradient id="f2" x1="1" y1="0" x2="0" y2="0">
+      <stop offset="0" stop-color="#ff8a1f"/><stop offset="1" stop-color="#ff2d87"/>
+    </linearGradient>
+    <linearGradient id="f3" x1="1" y1="0" x2="0" y2="0">
+      <stop offset="0" stop-color="#3be0ff"/><stop offset="1" stop-color="#5b5bff"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+
+  <!-- flusso d'aria: parte davanti al muso, scavalca pilota e cupolino, scende sulla coda -->
+  <g fill="none" stroke-linecap="round">
+    <path d="M500 168C452 160 420 112 362 92C300 72 228 72 168 96C116 118 78 156 36 196" stroke="url(#f3)" stroke-width="9" stroke-dasharray="150 20 70 20"/>
+    <path d="M500 206C458 200 428 156 376 132C324 110 256 106 198 126C148 144 108 180 62 214" stroke="url(#f2)" stroke-width="9" stroke-dasharray="130 18"/>
+    <path d="M500 244C466 240 440 204 400 178C358 152 300 134 240 144C182 154 136 190 92 226" stroke="url(#f1)" stroke-width="8"/>
+    <path d="M500 278C478 276 458 262 440 252" stroke="#ffe14a" stroke-width="7"/>
+  </g>
+
+  <!-- ombra a terra -->
+  <ellipse cx="262" cy="440" rx="190" ry="10" fill="#000" opacity=".45"/>
+
+  <!-- ruote -->
+  <g>
+    <circle cx="150" cy="370" r="62" fill="#22252e" stroke="#4a5266" stroke-width="4"/>
+    <circle cx="150" cy="370" r="44" fill="none" stroke="#e10600" stroke-width="6"/>
+    <circle cx="150" cy="370" r="9" fill="#9aa3b5"/>
+    <circle cx="372" cy="370" r="62" fill="#22252e" stroke="#4a5266" stroke-width="4"/>
+    <circle cx="372" cy="370" r="44" fill="none" stroke="#e10600" stroke-width="6"/>
+    <circle cx="372" cy="370" r="30" fill="none" stroke="#9aa3b5" stroke-width="5" stroke-dasharray="6 5"/>
+    <circle cx="372" cy="370" r="9" fill="#9aa3b5"/>
+  </g>
+
+  <!-- forcellone e forcella -->
+  <path d="M150 370L246 326" stroke="#5b6378" stroke-width="16" stroke-linecap="round"/>
+  <path d="M372 370L334 252" stroke="#d4a52a" stroke-width="13" stroke-linecap="round"/>
+
+  <!-- scarico -->
+  <path d="M206 318L118 290" stroke="#9aa3b5" stroke-width="14" stroke-linecap="round"/>
+  <path d="M118 290L104 286" stroke="#3d4456" stroke-width="14" stroke-linecap="round"/>
+
+  <!-- gamba del pilota (dietro la carena) -->
+  <path d="M232 214L282 254L244 292" stroke="#3a4152" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- carena -->
+  <path d="M432 256C430 236 410 222 382 216L304 214C284 214 272 226 266 242L254 266L198 262L150 250L100 236C90 236 86 244 94 250L150 290L206 302C216 322 234 346 264 348L346 346C374 343 394 323 404 300L432 270Z"
+        fill="url(#carena)"/>
+  <!-- filetto bianco -->
+  <path d="M108 246L196 268L254 272" stroke="#fff" stroke-width="5" stroke-linecap="round" fill="none" opacity=".85"/>
+  <!-- aletta -->
+  <path d="M396 244L428 230L432 246L404 258Z" fill="#9a0500" stroke="#ff4a2e" stroke-width="3" stroke-linejoin="round"/>
+  <!-- presa d'aria sul muso -->
+  <path d="M432 262L414 262" stroke="#14161c" stroke-width="8" stroke-linecap="round"/>
+  <!-- tabella con FM sul fianco -->
+  <ellipse cx="326" cy="292" rx="46" ry="30" fill="#fff"/>
+  <g transform="translate(301 277) scale(.15) skewX(-12)" fill="#111">
+    <path d="M0 0H130V40H45V85H115V125H45V200H0Z"/>
+    <path d="M145 200V0H190L230 80L270 0H315V200H273V80L240 145H220L187 80V200Z"/>
+  </g>
+
+  <!-- pilota in carena -->
+  <path d="M314 190C288 178 246 182 216 198L208 220L256 224C282 216 300 210 314 208Z" fill="#454d61"/>
+  <path d="M224 200C248 188 278 184 300 188" stroke="#6b7488" stroke-width="5" stroke-linecap="round" fill="none"/>
+  <!-- braccio -->
+  <path d="M296 208L360 224" stroke="#3a4152" stroke-width="15" stroke-linecap="round"/>
+  <circle cx="362" cy="224" r="10" fill="#e6e8ee"/>
+  <!-- casco (dietro il cupolino: pilota in carena) -->
+  <circle cx="320" cy="196" r="26" fill="url(#casco)"/>
+  <path d="M294 194C294 179 306 170 320 170C330 170 339 175 343 183L298 202Z" fill="#e10600"/>
+  <path d="M326 190C336 188 343 192 346 199L332 210C327 206 323 198 326 190Z" fill="#0b0d12"/>
+  <!-- cupolino -->
+  <path d="M388 218C382 192 360 176 332 176L318 216Z" fill="url(#cupolino)"/>
+  <path d="M378 204C372 194 362 188 350 186" stroke="#fff" stroke-width="3" stroke-linecap="round" fill="none" opacity=".45"/>
+</svg>

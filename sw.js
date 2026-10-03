@@ -1,6 +1,6 @@
 // FantaMotoGP - service worker: rete prima, cache solo per l'uso offline.
 // Cosi' dopo ogni pubblicazione si vedono subito i dati nuovi.
-const CACHE = "fantamotogp-v2";
+const CACHE = "fantamotogp-v3";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "manifest.webmanifest",
   "icons/icon.svg", "icons/icon-192.png", "icons/favicon-32.png", "data/league.json", "data/standings.json", "data/season.json",
   "data/config.json"];
