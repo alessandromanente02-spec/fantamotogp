@@ -148,6 +148,36 @@ async function viewHome() {
             <div class="circuit">Grazie a tutti, ci vediamo all'asta!</div></section>`;
   }
 
+  // risultati provvisori del weekend in corso (importato solo fino alla Sprint)
+  let provv = "";
+  const pv = S.league.provvisorio;
+  if (pv && c && pv.round === c.round) {
+    try {
+      const P = await getJSON("data/provvisorio.json");
+      const io = me();
+      provv = `
+      <section class="provv">
+        <div class="provv-head"><span>Risultati provvisori · dopo la Sprint</span>
+          <small>agg. ${esc(fDateTime(new Date(P.aggiornato)))}</small></div>
+        ${P.giocatori.length ? P.giocatori.map((g) => `
+          <details class="x">
+            <summary class="row">
+              ${medal(g.pos)}
+              <div class="grow"><div class="name">${esc(g.nome)}${g.nome === io ? ' <span class="chip accent">tu</span>' : ""}</div>
+                <div class="meta">${g.piloti.map((p) => esc(abbr(p.nome))).join(" · ")}</div></div>
+              <div class="pts big num ${sign(g.tot)}">${fmt(g.tot)}</div>${CHEV}
+            </summary>
+            <div class="xbody">
+              ${g.piloti.map((p) => riderBlock(p, p.pt)).join("")}
+              ${g.team && (g.team.voci.length || g.team.pt) ? teamBlock(g.team) : ""}
+            </div>
+          </details>`).join("") : `<div class="empty">Nessuna formazione per questo GP</div>`}
+        <p class="provv-note">Provvisori: la gara di domenica completa il punteggio.</p>
+      </section>`;
+    } catch (e) { provv = ""; }
+  }
+  if (provv) hero = hero.replace('<section class="hero">', '<section class="hero joined">');
+
   let lastGP = "";
   if (last) {
     const R = await getRound(last);
@@ -175,7 +205,7 @@ async function viewHome() {
   }
 
   view.innerHTML = `
-    ${hero}
+    ${hero}${provv}
     <div class="section-title"><span>Classifica generale</span><a href="#/classifica">Completa →</a></div>
     <div class="card">${standingsRows(5)}</div>
     ${lastGP}
@@ -184,59 +214,129 @@ async function viewHome() {
 }
 
 /* ========================================================== CLASSIFICA */
-function viewClassifica() {
+const RIDER_COLORS = ["#e10600", "#2f7cf6", "#e8b100", "#16a34a", "#9b5de5", "#f97316", "#0d9488",
+  "#ec4899", "#64748b", "#84cc16", "#06b6d4", "#a16207"];
+const rankOf = (vals) => vals.map((v) => 1 + vals.filter((w) => w > v + 1e-9).length);
+const SEL = {};                                   // linee scelte nel grafico, per tab
+
+/* Le tre classifiche condividono la stessa forma: una "serie" per riga. */
+function serieClassifica(tab) {
+  const st = S.standings;
+  const last = st.giocati[st.giocati.length - 1];
+  if (tab === "piloti") {
+    return S.season.piloti.map((p, i) => ({
+      nome: p.nome, punti: p.punti, tot: p.tot, color: RIDER_COLORS[i % RIDER_COLORS.length],
+      // media sui GP corsi davvero (non assente)
+      corso: (n) => !!p.stati[n - 1] && p.stati[n - 1] !== "ASSENTE",
+      riga: (pos) => {
+        const info = riderInfo(p.nome);
+        return `<div class="row">${medal(pos)} ${racenum(info.numero)}
+          <div class="grow"><div class="name">${esc(p.nome)}</div>
+            <div class="meta">${teamChip(info.team)} ${ownerChip(p.owner)}</div></div>
+          <div class="right"><div class="pts big num ${sign(p.tot)}">${fmt(p.tot)}</div>
+            <div class="gap">ultimo GP ${fmt(last ? p.punti[last - 1] : 0)}</div></div></div>`;
+      },
+    }));
+  }
+  if (tab === "team") {
+    return S.season.team.map((t) => ({
+      nome: t.nome, punti: t.punti, tot: t.tot, color: teamColor(t.nome), corso: () => true,
+      riga: (pos) => `<div class="row">${medal(pos)}
+          <span class="team-dot" style="background:${teamColor(t.nome)};width:12px;height:12px"></span>
+          <div class="grow"><div class="name">${esc(t.nome)}</div><div class="meta">${ownerChip(t.owner)}</div></div>
+          <div class="right"><div class="pts big num ${sign(t.tot)}">${fmt(t.tot)}</div>
+            <div class="gap">ultimo GP ${fmt(last ? t.punti[last - 1] : 0)}</div></div></div>`,
+    }));
+  }
+  return st.tabella.map((r) => {
+    const g = st.giocatori.find((x) => x.nome === r.nome);
+    return { nome: r.nome, punti: g.punti, tot: r.tot, color: playerColor(r.nome), corso: () => true, riga: null };
+  });
+}
+
+function recordHTML(serie, giocati) {
+  const R = (n) => S.league.calendario.find((c) => c.round === n);
+  let best = null, avg = null, ult = null;
+  const last = giocati[giocati.length - 1];
+  for (const s of serie) {
+    for (const n of giocati) {
+      if (!best || s.punti[n - 1] > best.v) best = { v: s.punti[n - 1], nome: s.nome, n };
+    }
+    const corsi = giocati.filter((n) => s.corso(n));
+    if (corsi.length) {
+      const m = corsi.reduce((a, n) => a + s.punti[n - 1], 0) / corsi.length;
+      if (!avg || m > avg.v) avg = { v: Math.round(m * 100) / 100, nome: s.nome, k: corsi.length };
+    }
+    if (!ult || s.punti[last - 1] > ult.v) ult = { v: s.punti[last - 1], nome: s.nome };
+  }
+  const cella = (tit, r, sotto) => `<div class="stat"><small>${tit}</small><b class="num">${r ? fmt(r.v) : "–"}</b>
+    <span>${r ? esc(r.nome) : ""}</span>${sotto ? `<span class="small">${esc(sotto)}</span>` : ""}</div>`;
+  return `<div class="stats">
+    ${cella("Miglior GP", best, best ? `R${best.n} ${R(best.n).gp}` : "")}
+    ${cella("Media più alta", avg, avg && avg.k < giocati.length ? `su ${avg.k} GP` : "")}
+    ${cella("Ultimo GP", ult, last ? R(last).gp : "")}
+  </div>`;
+}
+
+function viewClassifica(tabArg) {
   setTab("classifica");
+  const tabs = ["giocatori", "piloti", "team"];
+  const tab = tabs.includes(tabArg) ? tabArg : "giocatori";
   const st = S.standings;
   const giocati = st.giocati;
-  const tab = st.tabella;
-  const best = tab.length ? tab.reduce((a, b) => (b.migliore > a.migliore ? b : a)) : null;
-  const avg = tab.length ? tab.reduce((a, b) => (b.media > a.media ? b : a)) : null;
-  const lastBest = tab.length ? tab.reduce((a, b) => (b.ultimo_gp > a.ultimo_gp ? b : a)) : null;
   const R = (n) => S.league.calendario.find((c) => c.round === n);
+  const serie = serieClassifica(tab);
+  const rk = rankOf(serie.map((s) => s.tot));
+  const etichetta = { giocatori: "Giocatore", piloti: "Pilota", team: "Team" }[tab];
+  if (!SEL[tab]) SEL[tab] = new Set(tab === "giocatori" ? serie.map((s) => s.nome) : serie.slice(0, 5).map((s) => s.nome));
+
+  const classifica = tab === "giocatori" ? standingsRows()
+    : `<div class="list">${serie.map((s, i) => s.riga(rk[i])).join("")}</div>`;
 
   const matrix = giocati.length ? `
     <div class="section-title"><span>Punti GP per GP</span></div>
     <div class="card table-wrap"><table class="grid">
-      <thead><tr><th>Giocatore</th>${giocati.map((n) => `<th title="${esc(R(n).gp)}">R${n}<br><span style="text-transform:none">${esc(R(n).gp.slice(0, 3))}</span></th>`).join("")}<th>Tot</th></tr></thead>
-      <tbody>${tab.map((r) => {
-        const g = st.giocatori.find((x) => x.nome === r.nome);
-        return `<tr><td><b>${esc(r.nome)}</b></td>${giocati.map((n) => {
-          const v = g.punti[n - 1];
-          const top = Math.max(...st.giocatori.map((x) => x.punti[n - 1]));
+      <thead><tr><th>${etichetta}</th>${giocati.map((n) => `<th title="${esc(R(n).gp)}">R${n}<br><span style="text-transform:none">${esc(R(n).gp.slice(0, 3))}</span></th>`).join("")}<th>Tot</th></tr></thead>
+      <tbody>${serie.map((s) => `<tr><td><b>${esc(tab === "piloti" ? abbr(s.nome) : s.nome)}</b></td>${giocati.map((n) => {
+          const v = s.punti[n - 1];
+          const top = Math.max(...serie.map((x) => x.punti[n - 1]));
           return `<td class="num ${v === top && v ? "best" : ""}">${fmt(v)}</td>`;
-        }).join("")}<td class="num"><b>${fmt(r.tot)}</b></td></tr>`;
-      }).join("")}</tbody>
+        }).join("")}<td class="num"><b>${fmt(s.tot)}</b></td></tr>`).join("")}</tbody>
     </table></div>` : "";
+
+  const chips = tab === "giocatori" ? "" : `
+    <div class="chips" id="chart-pick">${serie.map((s) => `<button type="button" data-n="${esc(s.nome)}"
+      class="${SEL[tab].has(s.nome) ? "on" : ""}" style="--c:${s.color}"><i></i>${esc(tab === "piloti" ? abbr(s.nome) : s.nome)}</button>`).join("")}</div>
+    <p class="muted small" style="margin:6px 4px 0">Tocca un nome per aggiungerlo o toglierlo dal grafico.</p>`;
 
   view.innerHTML = `
     <h1 class="page-title">Classifica</h1>
-    <p class="page-sub">${giocati.length} GP disputati su 22</p>
-    <div class="card">${standingsRows()}</div>
-    ${tab.length ? `
+    <p class="page-sub">${giocati.length} GP disputati su 22${tab === "giocatori" ? "" : " · punti fanta"}</p>
+    <div class="seg">${tabs.map((t) => `<button class="${t === tab ? "on" : ""}" onclick="location.hash='#/classifica/${t}'">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
+    <div class="card">${classifica}</div>
+    ${giocati.length ? `
     <div class="section-title"><span>Record</span></div>
-    <div class="stats">
-      <div class="stat"><small>Miglior GP</small><b class="num">${fmt(best.migliore)}</b><span>${esc(best.nome)}</span></div>
-      <div class="stat"><small>Media più alta</small><b class="num">${fmt(avg.media)}</b><span>${esc(avg.nome)}</span></div>
-      <div class="stat"><small>Ultimo GP</small><b class="num">${fmt(lastBest.ultimo_gp)}</b><span>${esc(lastBest.nome)}</span></div>
-    </div>
+    ${recordHTML(serie, giocati)}
     <div class="section-title"><span>Andamento</span></div>
     <div class="seg" id="chart-mode"><button class="on" data-m="cum">Totale</button><button data-m="gp">Per GP</button></div>
-    <div class="card"><div class="chart-box"><canvas id="chart"></canvas></div></div>` : ""}
+    <div class="card"><div class="chart-box"><canvas id="chart"></canvas></div></div>
+    ${chips}` : ""}
     ${matrix}`;
 
-  if (!tab.length) return;
-  const draw = (mode) => {
+  if (!giocati.length) return;
+  let mode = "cum";
+  const draw = () => {
     if (typeof Chart === "undefined") return;
     const css = getComputedStyle(document.documentElement);
     const muted = css.getPropertyValue("--muted").trim();
     const line = css.getPropertyValue("--line").trim();
     const labels = giocati.map((n) => "R" + n + " " + R(n).gp.slice(0, 3));
-    const datasets = st.giocatori.map((g) => {
+    const datasets = serie.filter((s) => SEL[tab].has(s.nome)).map((s) => {
       let acc = 0;
-      const dati = giocati.map((n) => mode === "cum" ? (acc += g.punti[n - 1]) : g.punti[n - 1]);
-      const col = playerColor(g.nome);
-      return { label: g.nome, data: mode === "cum" ? [0, ...dati] : dati, borderColor: col, backgroundColor: col,
-               tension: .3, borderWidth: 3, pointRadius: 4, pointHoverRadius: 6, borderRadius: 6 };
+      const dati = giocati.map((n) => mode === "cum" ? (acc += s.punti[n - 1]) : s.punti[n - 1]);
+      return { label: tab === "piloti" ? abbr(s.nome) : s.nome, data: mode === "cum" ? [0, ...dati] : dati,
+               borderColor: s.color, backgroundColor: s.color,
+               tension: .3, borderWidth: 3, pointRadius: giocati.length > 12 ? 2 : 4, pointHoverRadius: 6, borderRadius: 4 };
     });
     if (S.chart) S.chart.destroy();
     S.chart = new Chart(document.getElementById("chart"), {
@@ -252,12 +352,21 @@ function viewClassifica() {
       },
     });
   };
-  draw("cum");
+  draw();
   document.getElementById("chart-mode").addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (!b) return;
     document.querySelectorAll("#chart-mode button").forEach((x) => x.classList.toggle("on", x === b));
-    draw(b.dataset.m);
+    mode = b.dataset.m;
+    draw();
+  });
+  document.getElementById("chart-pick")?.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    const n = b.dataset.n;
+    if (SEL[tab].has(n)) SEL[tab].delete(n); else SEL[tab].add(n);
+    b.classList.toggle("on", SEL[tab].has(n));
+    draw();
   });
 }
 
@@ -414,17 +523,17 @@ function sparkline(values, color) {
 }
 
 function viewSquadre(arg) {
+  // le classifiche di piloti e team ora stanno in Classifica
+  if (arg === "piloti" || arg === "team") { location.replace("#/classifica/" + arg); return; }
   setTab("squadre");
-  const tabs = ["giocatori", "piloti", "team"];
-  const tab = tabs.includes(arg) ? arg : "giocatori";
-  const focus = tabs.includes(arg) ? null : arg;
+  const focus = arg && arg !== "giocatori" ? arg : null;
   const giocati = S.standings.giocati;
   const seasonP = Object.fromEntries(S.season.piloti.map((p) => [p.nome, p]));
   const seasonT = Object.fromEntries(S.season.team.map((t) => [t.nome, t]));
   const tot = Object.fromEntries(S.standings.tabella.map((r) => [r.nome, r]));
   let body = "";
 
-  if (tab === "giocatori") {
+  {
     const asta = S.league.asta.slice().sort((a, b) => (tot[a.nome]?.pos ?? 99) - (tot[b.nome]?.pos ?? 99));
     body = asta.map((a) => {
       const col = playerColor(a.nome);
@@ -476,35 +585,11 @@ function viewSquadre(arg) {
         </details>` : ""}
       </div>`;
     }).join("");
-  } else if (tab === "piloti") {
-    body = `<div class="card"><div class="list">` + S.season.piloti.map((p, i) => {
-      const info = riderInfo(p.nome);
-      const ultimo = giocati.length ? p.punti[giocati[giocati.length - 1] - 1] : 0;
-      return `<div class="row">
-        ${medal(i + 1)} ${racenum(info.numero)}
-        <div class="grow"><div class="name">${esc(p.nome)}</div>
-          <div class="meta">${teamChip(info.team)} ${ownerChip(p.owner)}</div></div>
-        <div class="right"><div class="pts big num ${sign(p.tot)}">${fmt(p.tot)}</div>
-          <div class="gap">ultimo GP ${fmt(ultimo)}</div></div>
-      </div>`;
-    }).join("") + `</div></div>
-    <p class="muted small" style="margin:10px 4px">Punti fanta totali dei piloti a listino nei GP disputati.</p>`;
-  } else {
-    body = `<div class="card"><div class="list">` + S.season.team.map((t, i) => {
-      const ultimo = giocati.length ? t.punti[giocati[giocati.length - 1] - 1] : 0;
-      return `<div class="row">
-        ${medal(i + 1)} <span class="team-dot" style="background:${teamColor(t.nome)};width:12px;height:12px"></span>
-        <div class="grow"><div class="name">${esc(t.nome)}</div><div class="meta">${ownerChip(t.owner)}</div></div>
-        <div class="right"><div class="pts big num ${sign(t.tot)}">${fmt(t.tot)}</div>
-          <div class="gap">ultimo GP ${fmt(ultimo)}</div></div>
-      </div>`;
-    }).join("") + `</div></div>`;
   }
 
   view.innerHTML = `
     <h1 class="page-title">Squadre</h1>
-    <p class="page-sub">Rose d'asta, piloti e team della stagione</p>
-    <div class="seg">${tabs.map((t) => `<button class="${t === tab ? "on" : ""}" onclick="location.hash='#/squadre/${t}'">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
+    <p class="page-sub">Rose d'asta e formazioni schierate · <a href="#/classifica/piloti" style="color:var(--accent)">classifiche piloti e team →</a></p>
     ${body}`;
   if (focus) document.getElementById("sq-" + focus)?.scrollIntoView({ block: "start" });
 }
@@ -756,7 +841,7 @@ async function route() {
   const [page, a, b] = location.hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
   try {
     switch (page) {
-      case "classifica": viewClassifica(); break;
+      case "classifica": viewClassifica(a); break;
       case "gp": await viewGP(a, b); break;
       case "squadre": viewSquadre(a); break;
       case "formazione": await viewFormazione(); break;

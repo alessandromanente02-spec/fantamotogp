@@ -179,6 +179,34 @@ main { max-width: 760px; margin: 0 auto; padding: 16px 16px 28px; outline: none;
 .countdown b { display: block; font-size: 22px; line-height: 1; font-weight: 900; }
 .countdown span { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; opacity: .85; }
 .hero-label { font-size: 12px; text-transform: uppercase; letter-spacing: .7px; opacity: .85; margin-bottom: 6px; }
+/* ---------- risultati provvisori (attaccati sotto il box rosso) ---------- */
+.hero.joined { border-radius: 20px 20px 0 0; box-shadow: none; }
+.provv {
+  background: var(--surface); border: 1px solid var(--line); border-top: 0;
+  border-radius: 0 0 20px 20px; box-shadow: var(--shadow); overflow: hidden;
+}
+.provv-head {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  padding: 12px 16px 8px; font-size: 13px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .7px; color: var(--accent); border-bottom: 1px solid var(--line);
+  background: var(--accent-soft);
+}
+.provv-head small { text-transform: none; letter-spacing: 0; color: var(--muted); font-weight: 600; }
+.provv details.x { border-bottom: 1px solid var(--line); }
+.provv details.x > summary.row { border-bottom: 0; }
+.provv-note { margin: 0; padding: 10px 16px 12px; font-size: 12.5px; color: var(--muted); }
+
+/* ---------- chip per scegliere le linee del grafico ---------- */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chips button {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+  font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.chips button i { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
+.chips button.on { color: var(--text); border-color: var(--c); }
+.chips button.on i { background: var(--c); }
+
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   padding: 11px 18px; border-radius: 12px; border: 0; cursor: pointer;
