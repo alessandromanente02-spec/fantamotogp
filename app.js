@@ -898,6 +898,14 @@ function hideSplash() {
   await route();
   hideSplash();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("sw.js").catch(() => {});
+    // a ogni apertura controlla se e' stata pubblicata una versione nuova; se il
+    // service worker cambia, ricarica una volta la pagina per mostrarla subito
+    const avevaSW = !!navigator.serviceWorker.controller;
+    let ricaricata = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (avevaSW && !ricaricata) { ricaricata = true; location.reload(); }
+    });
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" })
+      .then((reg) => reg.update()).catch(() => {});
   }
 })();
