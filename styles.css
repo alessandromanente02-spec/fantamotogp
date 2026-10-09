@@ -199,7 +199,13 @@ main { max-width: 760px; margin: 0 auto; padding: 16px 16px 28px; outline: none;
 .provv summary .name { color: #fff; }
 .provv summary .meta { color: rgba(255, 255, 255, .75); }
 .provv summary .pts { color: #fff; }               /* niente verde/rosso sul fondo rosso */
-.provv summary .chev { color: rgba(255, 255, 255, .8); }
+/* freccia della tendina: bianca in un cerchietto, ben visibile sul rosso
+   (selettore piu' specifico di "details.x > summary .chev", che la farebbe grigia) */
+.provv details.x > summary .chev {
+  color: #fff; width: 28px; height: 28px; padding: 5px; border-radius: 50%;
+  background: rgba(255, 255, 255, .18); stroke-width: 2.6;
+}
+.provv details.x[open] > summary .chev { background: rgba(255, 255, 255, .3); }
 .provv summary .medal:not(.p1):not(.p2):not(.p3) { background: rgba(255, 255, 255, .2); color: #fff; }
 .provv .chip.accent { background: #fff; color: #c40500; }
 .provv .xbody { padding-top: 2px; }
