@@ -155,9 +155,15 @@ async function viewHome() {
     try {
       const P = await getJSON("data/provvisorio.json");
       const io = me();
+      const FASI_PROVV = {
+        prove: ["dopo le prove del venerdì", "Qualifiche, Sprint e gara completano il punteggio."],
+        qualifiche: ["dopo le qualifiche", "Sprint e gara completano il punteggio."],
+        sprint: ["dopo la Sprint", "La gara di domenica completa il punteggio."],
+      };
+      const [quando, nota] = FASI_PROVV[P.fase] || FASI_PROVV.sprint;
       provv = `
       <section class="provv">
-        <div class="provv-head"><span>Risultati provvisori · dopo la Sprint</span>
+        <div class="provv-head"><span>Risultati provvisori · ${esc(quando)}</span>
           <small>agg. ${esc(fDateTime(new Date(P.aggiornato)))}</small></div>
         ${P.giocatori.length ? P.giocatori.map((g) => `
           <details class="x">
@@ -172,7 +178,7 @@ async function viewHome() {
               ${g.team && (g.team.voci.length || g.team.pt) ? teamBlock(g.team) : ""}
             </div>
           </details>`).join("") : `<div class="empty">Nessuna formazione per questo GP</div>`}
-        <p class="provv-note">Provvisori: la gara di domenica completa il punteggio.</p>
+        <p class="provv-note">Provvisori: ${esc(nota)}</p>
       </section>`;
     } catch (e) { provv = ""; }
   }
