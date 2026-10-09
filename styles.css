@@ -180,21 +180,32 @@ main { max-width: 760px; margin: 0 auto; padding: 16px 16px 28px; outline: none;
 .countdown span { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; opacity: .85; }
 .hero-label { font-size: 12px; text-transform: uppercase; letter-spacing: .7px; opacity: .85; margin-bottom: 6px; }
 /* ---------- risultati provvisori (attaccati sotto il box rosso) ---------- */
+/* la lista prosegue il box rosso del GP: e' visibilmente una classifica provvisoria */
 .hero.joined { border-radius: 20px 20px 0 0; box-shadow: none; }
 .provv {
-  background: var(--surface); border: 1px solid var(--line); border-top: 0;
-  border-radius: 0 0 20px 20px; box-shadow: var(--shadow); overflow: hidden;
+  background: linear-gradient(180deg, #c40500 0%, #9c0400 100%);
+  color: #fff; border-radius: 0 0 20px 20px; overflow: hidden;
+  box-shadow: 0 10px 30px rgba(225, 6, 0, .25);
 }
 .provv-head {
   display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap;
-  padding: 12px 16px 8px; font-size: 13px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .7px; color: var(--accent); border-bottom: 1px solid var(--line);
-  background: var(--accent-soft);
+  padding: 12px 16px 9px; font-size: 13px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .7px; color: #fff;
+  background: rgba(0, 0, 0, .2); border-bottom: 1px solid rgba(255, 255, 255, .18);
 }
-.provv-head small { text-transform: none; letter-spacing: 0; color: var(--muted); font-weight: 600; }
-.provv details.x { border-bottom: 1px solid var(--line); }
+.provv-head small { text-transform: none; letter-spacing: 0; color: rgba(255, 255, 255, .75); font-weight: 600; }
+.provv details.x { border-bottom: 1px solid rgba(255, 255, 255, .15); }
 .provv details.x > summary.row { border-bottom: 0; }
-.provv-note { margin: 0; padding: 10px 16px 12px; font-size: 12.5px; color: var(--muted); }
+.provv summary .name { color: #fff; }
+.provv summary .meta { color: rgba(255, 255, 255, .75); }
+.provv summary .pts { color: #fff; }               /* niente verde/rosso sul fondo rosso */
+.provv summary .chev { color: rgba(255, 255, 255, .8); }
+.provv summary .medal:not(.p1):not(.p2):not(.p3) { background: rgba(255, 255, 255, .2); color: #fff; }
+.provv .chip.accent { background: #fff; color: #c40500; }
+.provv .xbody { padding-top: 2px; }
+.provv .xbody .rider { box-shadow: 0 4px 14px rgba(0, 0, 0, .18); color: var(--text); }
+.provv .empty { color: rgba(255, 255, 255, .8); }
+.provv-note { margin: 0; padding: 10px 16px 12px; font-size: 12.5px; color: rgba(255, 255, 255, .8); }
 
 /* ---------- chip per scegliere le linee del grafico ---------- */
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
