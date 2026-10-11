@@ -1,6 +1,6 @@
 // FantaMotoGP - service worker: rete prima, cache solo per l'uso offline.
 // Cosi' dopo ogni pubblicazione si vedono subito i dati nuovi.
-const CACHE = "fantamotogp-v5";
+const CACHE = "fantamotogp-v6";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "manifest.webmanifest",
   "icons/logo.png", "icons/icon-192.png", "icons/favicon-32.png", "data/league.json", "data/standings.json", "data/season.json",
   "data/config.json"];
@@ -41,4 +41,31 @@ self.addEventListener("fetch", (e) => {
       })
       .catch(() => caches.match(req, { ignoreSearch: true }))
   );
+});
+
+// notifiche push (inviate dal PC con notifica.py): titolo, testo e pagina da aprire
+self.addEventListener("push", (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data ? e.data.text() : "" }; }
+  e.waitUntil(self.registration.showNotification(d.title || "FantaMotoGP", {
+    body: d.body || "",
+    icon: "icons/icon-192.png",
+    tag: d.tag || "fantamotogp",     // una notifica nuova sostituisce la precedente
+    renotify: true,
+    data: { url: d.url || "./" },
+  }));
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = new URL(e.notification.data?.url || "./", self.registration.scope).href;
+  e.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then((finestre) => {
+    const w = finestre.find((c) => c.url.startsWith(self.registration.scope));
+    if (!w) return clients.openWindow(url);
+    // app gia' aperta: in primo piano e ricaricata sulla pagina giusta (dati nuovi);
+    // il ?n= forza il ricaricamento anche se cambia solo la parte dopo #
+    const nuovo = new URL(url);
+    nuovo.searchParams.set("n", Date.now());
+    return w.focus().then((c) => (c || w).navigate(nuovo.href)).catch(() => clients.openWindow(url));
+  }));
 });

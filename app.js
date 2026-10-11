@@ -212,11 +212,111 @@ async function viewHome() {
 
   view.innerHTML = `
     ${hero}${provv}
+    <div id="notif"></div>
     <div class="section-title"><span>Classifica generale</span><a href="#/classifica">Completa →</a></div>
     <div class="card">${standingsRows(5)}</div>
     ${lastGP}
-    <p class="foot">Dati aggiornati al ${esc(fDateTime(new Date(S.league.aggiornato)))}</p>`;
+    <p class="foot">Dati aggiornati al ${esc(fDateTime(new Date(S.league.aggiornato)))}</p>
+    <p class="foot" id="notif-foot"></p>`;
   if (c && lineup && lineup.round === c.round) startCountdown("cd", lineup.deadline);
+  notifUI();
+}
+
+/* ------------------------------------------------------------- notifiche */
+// Web Push: il telefono si iscrive (chiave pubblica in config.json), l'indirizzo
+// va su Supabase e notifica.py sul PC invia i risultati.
+const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const pushOK = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window &&
+  !!S.config?.push_public_key && sbOK();
+const chiaveVapid = (b64) => {
+  const s = atob((b64 + "=".repeat((4 - b64.length % 4) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(s, (c) => c.charCodeAt(0));
+};
+async function iscrizionePush() {
+  const reg = await navigator.serviceWorker.ready;
+  return { reg, sub: await reg.pushManager.getSubscription() };
+}
+async function salvaIscrizione(sub) {
+  const j = sub.toJSON();
+  const res = await rpc("push_iscrivi", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
+  if (!res.ok) throw new Error(res.errore || "iscrizione rifiutata");
+}
+
+async function notifUI() {
+  const top = document.getElementById("notif"), foot = document.getElementById("notif-foot");
+  if (!top || !foot) return;
+  const card = (testo, bottone) => `
+    <div class="card notif-card">
+      <div class="notif-ico">🔔</div>
+      <div class="grow"><b>Notifiche dei risultati</b><div class="meta">${testo}</div></div>
+      ${bottone || ""}
+    </div>`;
+  // iPhone: le notifiche esistono solo con l'app aggiunta alla schermata Home
+  if (isIOS() && !isStandalone()) {
+    if (S.config?.push_public_key && !lsGet("fm_notif_no"))
+      top.innerHTML = card("Su iPhone: Condividi → <b>Aggiungi alla schermata Home</b>, poi apri l'app da lì per attivarle.",
+        `<button class="btn ghost sm" id="notif-no">Ok</button>`);
+    document.getElementById("notif-no")?.addEventListener("click", () => { lsSet("fm_notif_no", true); top.innerHTML = ""; });
+    return;
+  }
+  if (!pushOK()) return;
+  let sub = null;
+  try { ({ sub } = await iscrizionePush()); } catch { return; }
+  top.innerHTML = foot.innerHTML = "";
+  if (Notification.permission === "denied") {
+    foot.textContent = "🔕 Notifiche bloccate: riattivale dalle impostazioni del telefono per questa app.";
+  } else if (sub && Notification.permission === "granted") {
+    foot.innerHTML = `🔔 Notifiche attive · <a href="javascript:void 0" id="notif-off">disattiva</a>`;
+    document.getElementById("notif-off").addEventListener("click", disattivaNotifiche);
+    if (!S.pushSync) {                  // una volta per apertura: l'indirizzo resta aggiornato su Supabase
+      S.pushSync = true;
+      salvaIscrizione(sub).catch(() => {});
+    }
+  } else if (lsGet("fm_notif_no")) {
+    foot.innerHTML = `<a href="javascript:void 0" id="notif-on">🔔 Attiva le notifiche dei risultati</a>`;
+    document.getElementById("notif-on").addEventListener("click", attivaNotifiche);
+  } else {
+    top.innerHTML = card("Avviso sul telefono quando escono i provvisori del venerdì e del sabato e i risultati del GP.",
+      `<div class="notif-btns"><button class="btn sm" id="notif-on">Attiva</button>
+       <button class="btn ghost sm" id="notif-no">Non ora</button></div>`);
+    document.getElementById("notif-on").addEventListener("click", attivaNotifiche);
+    document.getElementById("notif-no").addEventListener("click", () => { lsSet("fm_notif_no", true); notifUI(); });
+  }
+}
+
+async function attivaNotifiche() {
+  const top = document.getElementById("notif");
+  try {
+    if (await Notification.requestPermission() !== "granted") return notifUI();
+    let { reg, sub } = await iscrizionePush();
+    const key = chiaveVapid(S.config.push_public_key);
+    const vecchia = sub?.options?.applicationServerKey;
+    if (sub && vecchia && new Uint8Array(vecchia).join() !== key.join()) {
+      await sub.unsubscribe();          // iscrizione fatta con chiavi vecchie: la rifaccio
+      sub = null;
+    }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+    await salvaIscrizione(sub);
+    S.pushSync = true;
+    lsSet("fm_notif_no", null);
+    notifUI();
+  } catch (e) {
+    if (top) top.innerHTML = `<div class="card pad"><div class="alert ko">Notifiche non attivate: ${esc(e.message)}</div></div>`;
+  }
+}
+
+async function disattivaNotifiche() {
+  try {
+    const { sub } = await iscrizionePush();
+    if (sub) {
+      rpc("push_disiscrivi", { p_endpoint: sub.endpoint }).catch(() => {});
+      await sub.unsubscribe();
+    }
+  } catch {}
+  lsSet("fm_notif_no", true);
+  notifUI();
 }
 
 /* ========================================================== CLASSIFICA */
