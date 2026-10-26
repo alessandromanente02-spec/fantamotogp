@@ -57,6 +57,7 @@ const ownerChip = (o) => o
 const racenum = (n) => n != null ? `<span class="racenum">${esc(n)}</span>` : "";
 const CHEV = `<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>`;
 const SKULL = "💀";
+const ANNULLATA = "Contano prove, qualifiche e Sprint; i team prendono classifica e premi della Sprint.";
 
 /* -------------------------------------------------------- calendario */
 function nextRaces() {
@@ -192,6 +193,7 @@ async function viewHome() {
     const cls = ["s2", "s1", "s3"];
     lastGP = `
       <div class="section-title"><span>Ultimo GP · ${esc(R.gp)}</span><a href="#/gp/${last}">Dettagli →</a></div>
+      ${R.gara_annullata ? `<div class="alert info">🌧️ <b>Gara annullata.</b> ${ANNULLATA}</div>` : ""}
       <div class="card">
         <div class="podium">
           ${order.map((g, i) => g ? `<div class="step ${cls[i]}"><div class="who">${esc(g.nome)}</div>
@@ -606,6 +608,7 @@ async function viewGP(nArg, tabArg) {
     ${pills}
     <h1 class="page-title">GP ${esc(R.gp)}</h1>
     <p class="page-sub">Round ${R.round} · ${esc(R.circuito)} · ${esc(R.data)}</p>
+    ${R.gara_annullata ? `<div class="alert info">🌧️ <b>Gara annullata.</b> ${ANNULLATA}</div>` : ""}
     <div class="seg">
       ${["giocatori", "piloti", "team"].map((t) => `<button class="${t === tab ? "on" : ""}" onclick="location.hash='#/gp/${n}/${t}'">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}
     </div>
