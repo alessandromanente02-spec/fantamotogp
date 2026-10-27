@@ -1,64 +1,99 @@
-/* FantaMotoGP 2026 — stile dell'app */
+/* FantaMotoGP 2026 — stile dell'app
+   Colori e misure: design system "FantaMotoGP" su Claude (tokens.json), blu in chiaro, ciano in scuro. */
 :root {
+  --accent: #1e40af;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(30, 64, 175, .09);
   --bg: #f4f5f8;
+  --brand-blue: #1e3a8a;
+  --bronze: #b0672c;
+  --btn-light-ink: #1e3a8a;
+  --gold: #c99a06;
+  --hero-end: #1d4ed8;
+  --hero-start: #172554;
+  --line: #dfe2e9;
+  --medal-ink-1: #2a2000;
+  --medal-ink-2: #1d2129;
+  --medal-ink-3: #2a1300;
+  --muted: #646c7d;
+  --neg: #d4231c;
+  --neg-soft: rgba(212, 35, 28, .1);
+  --on-hero: #ffffff;
+  --pos: #11883f;
+  --pos-soft: rgba(17, 136, 63, .1);
+  --provv-bottom: #172554;
+  --provv-top: #1e3a8a;
+  --radius: 16px;
+  --shadow: 0 1px 2px rgba(16, 20, 30, .06), 0 6px 20px rgba(16, 20, 30, .06);
+  --shadow-hero: 0 10px 30px rgba(30, 64, 175, .25);
+  --shadow-on-hero: 0 4px 14px rgba(0, 0, 0, .18);
+  --silver: #8a93a3;
+  --sub-blue: #0a62bd;
+  --sub-blue-soft: rgba(11, 107, 203, .12);
   --surface: #ffffff;
   --surface-2: #eef0f4;
-  --line: #dfe2e9;
-  --text: #11141b;
-  --muted: #646c7d;
-  --accent: #e10600;
-  --accent-ink: #ffffff;
-  --accent-soft: rgba(225, 6, 0, .09);
-  --pos: #11883f;
-  --neg: #d4231c;
-  --pos-soft: rgba(17, 136, 63, .1);
-  --neg-soft: rgba(212, 35, 28, .1);
-  --gold: #c99a06;
-  --silver: #8a93a3;
-  --bronze: #b0672c;
-  --shadow: 0 1px 2px rgba(16, 20, 30, .06), 0 6px 20px rgba(16, 20, 30, .06);
-  --radius: 16px;
   --tabbar-h: 64px;
+  --text: #11141b;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    --accent: #22d3ee;
+    --accent-ink: #0b0d12;
+    --accent-soft: rgba(34, 211, 238, .14);
     --bg: #0b0d12;
+    --brand-blue: #155e75;
+    --bronze: #df8c4c;
+    --btn-light-ink: #0e7490;
+    --gold: #f2c230;
+    --hero-end: #0e7490;
+    --hero-start: #164e63;
+    --line: #272d3c;
+    --muted: #8d95a8;
+    --neg: #ff5a52;
+    --neg-soft: rgba(255, 90, 82, .13);
+    --pos: #35d07a;
+    --pos-soft: rgba(53, 208, 122, .13);
+    --provv-bottom: #164e63;
+    --provv-top: #155e75;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .25);
+    --shadow-hero: 0 10px 30px rgba(34, 211, 238, .18);
+    --silver: #c3cad6;
+    --sub-blue: #60a5fa;
+    --sub-blue-soft: rgba(96, 165, 250, .14);
     --surface: #151922;
     --surface-2: #1d2230;
-    --line: #272d3c;
     --text: #f2f4f8;
-    --muted: #8d95a8;
-    --accent: #ff2a1f;
-    --accent-soft: rgba(255, 42, 31, .14);
-    --pos: #35d07a;
-    --neg: #ff5a52;
-    --pos-soft: rgba(53, 208, 122, .13);
-    --neg-soft: rgba(255, 90, 82, .13);
-    --gold: #f2c230;
-    --silver: #c3cad6;
-    --bronze: #df8c4c;
-    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .25);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
+  --accent: #22d3ee;
+  --accent-ink: #0b0d12;
+  --accent-soft: rgba(34, 211, 238, .14);
   --bg: #0b0d12;
+  --brand-blue: #155e75;
+  --bronze: #df8c4c;
+  --btn-light-ink: #0e7490;
+  --gold: #f2c230;
+  --hero-end: #0e7490;
+  --hero-start: #164e63;
+  --line: #272d3c;
+  --muted: #8d95a8;
+  --neg: #ff5a52;
+  --neg-soft: rgba(255, 90, 82, .13);
+  --pos: #35d07a;
+  --pos-soft: rgba(53, 208, 122, .13);
+  --provv-bottom: #164e63;
+  --provv-top: #155e75;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .25);
+  --shadow-hero: 0 10px 30px rgba(34, 211, 238, .18);
+  --silver: #c3cad6;
+  --sub-blue: #60a5fa;
+  --sub-blue-soft: rgba(96, 165, 250, .14);
   --surface: #151922;
   --surface-2: #1d2230;
-  --line: #272d3c;
   --text: #f2f4f8;
-  --muted: #8d95a8;
-  --accent: #ff2a1f;
-  --accent-soft: rgba(255, 42, 31, .14);
-  --pos: #35d07a;
-  --neg: #ff5a52;
-  --pos-soft: rgba(53, 208, 122, .13);
-  --neg-soft: rgba(255, 90, 82, .13);
-  --gold: #f2c230;
-  --silver: #c3cad6;
-  --bronze: #df8c4c;
-  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .25);
   color-scheme: dark;
 }
 
@@ -156,11 +191,11 @@ main { max-width: 760px; margin: 0 auto; padding: 16px 16px 28px; outline: none;
 
 /* ---------- hero prossimo GP ---------- */
 .hero {
-  position: relative; padding: 18px; border-radius: 20px; color: #fff;
+  position: relative; padding: 18px; border-radius: 20px; color: var(--on-hero);
   background:
     radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,.14), transparent 50%),
-    linear-gradient(135deg, #b30500 0%, #e10600 45%, #ff3b1f 100%);
-  box-shadow: 0 10px 30px rgba(225, 6, 0, .25);
+    linear-gradient(135deg, var(--hero-start) 0%, var(--brand-blue) 45%, var(--hero-end) 100%);
+  box-shadow: var(--shadow-hero);
   overflow: hidden;
 }
 .hero::after {
@@ -179,37 +214,37 @@ main { max-width: 760px; margin: 0 auto; padding: 16px 16px 28px; outline: none;
 .countdown b { display: block; font-size: 22px; line-height: 1; font-weight: 900; }
 .countdown span { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; opacity: .85; }
 .hero-label { font-size: 12px; text-transform: uppercase; letter-spacing: .7px; opacity: .85; margin-bottom: 6px; }
-/* ---------- risultati provvisori (attaccati sotto il box rosso) ---------- */
-/* la lista prosegue il box rosso del GP: e' visibilmente una classifica provvisoria */
+/* ---------- risultati provvisori (attaccati sotto il box blu) ---------- */
+/* la lista prosegue il box blu del GP: e' visibilmente una classifica provvisoria */
 .hero.joined { border-radius: 20px 20px 0 0; box-shadow: none; }
 .provv {
-  background: linear-gradient(180deg, #c40500 0%, #9c0400 100%);
-  color: #fff; border-radius: 0 0 20px 20px; overflow: hidden;
-  box-shadow: 0 10px 30px rgba(225, 6, 0, .25);
+  background: linear-gradient(180deg, var(--provv-top) 0%, var(--provv-bottom) 100%);
+  color: var(--on-hero); border-radius: 0 0 20px 20px; overflow: hidden;
+  box-shadow: var(--shadow-hero);
 }
 .provv-head {
   display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap;
   padding: 12px 16px 9px; font-size: 13px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .7px; color: #fff;
+  letter-spacing: .7px; color: var(--on-hero);
   background: rgba(0, 0, 0, .2); border-bottom: 1px solid rgba(255, 255, 255, .18);
 }
 .provv-head small { text-transform: none; letter-spacing: 0; color: rgba(255, 255, 255, .75); font-weight: 600; }
 .provv details.x { border-bottom: 1px solid rgba(255, 255, 255, .15); }
 .provv details.x > summary.row { border-bottom: 0; }
-.provv summary .name { color: #fff; }
+.provv summary .name { color: var(--on-hero); }
 .provv summary .meta { color: rgba(255, 255, 255, .75); }
-.provv summary .pts { color: #fff; }               /* niente verde/rosso sul fondo rosso */
-/* freccia della tendina: bianca in un cerchietto, ben visibile sul rosso
+.provv summary .pts { color: var(--on-hero); }               /* niente verde/rosso sul fondo blu */
+/* freccia della tendina: bianca in un cerchietto, ben visibile sul blu
    (selettore piu' specifico di "details.x > summary .chev", che la farebbe grigia) */
 .provv details.x > summary .chev {
-  color: #fff; width: 28px; height: 28px; padding: 5px; border-radius: 50%;
+  color: var(--on-hero); width: 28px; height: 28px; padding: 5px; border-radius: 50%;
   background: rgba(255, 255, 255, .18); stroke-width: 2.6;
 }
 .provv details.x[open] > summary .chev { background: rgba(255, 255, 255, .3); }
-.provv summary .medal:not(.p1):not(.p2):not(.p3) { background: rgba(255, 255, 255, .2); color: #fff; }
-.provv .chip.accent { background: #fff; color: #c40500; }
+.provv summary .medal:not(.p1):not(.p2):not(.p3) { background: rgba(255, 255, 255, .2); color: var(--on-hero); }
+.provv .chip.accent { background: var(--on-hero); color: var(--provv-top); }
 .provv .xbody { padding-top: 2px; }
-.provv .xbody .rider { box-shadow: 0 4px 14px rgba(0, 0, 0, .18); color: var(--text); }
+.provv .xbody .rider { box-shadow: var(--shadow-on-hero); color: var(--text); }
 .provv .empty { color: rgba(255, 255, 255, .8); }
 .provv-note { margin: 0; padding: 10px 16px 12px; font-size: 12.5px; color: rgba(255, 255, 255, .8); }
 
@@ -232,7 +267,7 @@ main { max-width: 760px; margin: 0 auto; padding: 16px 16px 28px; outline: none;
 }
 .btn:active { transform: scale(.97); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
-.btn.light { background: #fff; color: #c10500; }
+.btn.light { background: var(--on-hero); color: var(--btn-light-ink); }
 .btn.ghost { background: var(--surface-2); color: var(--text); }
 .btn.block { width: 100%; }
 .btn.sm { padding: 8px 14px; font-size: 14px; border-radius: 10px; }
@@ -271,9 +306,9 @@ main { max-width: 760px; margin: 0 auto; padding: 16px 16px 28px; outline: none;
   display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
   font-weight: 900; font-size: 14px; flex: none; background: var(--surface-2); color: var(--muted);
 }
-.medal.p1 { background: var(--gold); color: #2a2000; }
-.medal.p2 { background: var(--silver); color: #1d2129; }
-.medal.p3 { background: var(--bronze); color: #2a1300; }
+.medal.p1 { background: var(--gold); color: var(--medal-ink-1); }
+.medal.p2 { background: var(--silver); color: var(--medal-ink-2); }
+.medal.p3 { background: var(--bronze); color: var(--medal-ink-3); }
 
 /* ---------- liste ---------- */
 .list { list-style: none; margin: 0; padding: 0; }
@@ -362,7 +397,7 @@ details.x[open] > summary .chev { transform: rotate(180deg); }
 .phase .sub { font-weight: 900; font-size: 15px; text-align: right; min-width: 38px; }
 .note-line { margin-top: 10px; font-size: 13px; color: var(--muted); }
 .note-line b { color: var(--text); }
-.tag-sub { font-size: 11.5px; font-weight: 700; color: #0b6bcb; background: rgba(11, 107, 203, .12);
+.tag-sub { font-size: 11.5px; font-weight: 700; color: var(--sub-blue); background: var(--sub-blue-soft);
            padding: 1px 7px; border-radius: 6px; }
 
 /* ---------- tabelle ---------- */
@@ -386,7 +421,7 @@ table.grid td.best { color: var(--pos); font-weight: 700; }
 .team-card-head { display: flex; align-items: center; gap: 12px; padding: 16px; }
 .avatar {
   width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; flex: none;
-  font-weight: 900; font-size: 19px; color: #fff;
+  font-weight: 900; font-size: 19px; color: var(--on-hero);
 }
 .spark { width: 70px; height: 24px; flex: none; }
 .spark path { stroke-width: 2; }
@@ -432,7 +467,7 @@ table.grid td.best { color: var(--pos); font-weight: 700; }
 .cal-row .rnd small { font-size: 9.5px; color: var(--muted); font-weight: 700; display: block; }
 .cal-row.done .rnd { background: var(--text); color: var(--bg); }
 .cal-row.done .rnd small { color: inherit; opacity: .7; }
-.cal-row.next .rnd { background: var(--accent); color: #fff; }
+.cal-row.next .rnd { background: var(--accent); color: var(--accent-ink); }
 .cal-row.next .rnd small { color: inherit; opacity: .8; }
 .cal-row.past { opacity: .55; }
 
