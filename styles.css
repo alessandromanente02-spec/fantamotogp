@@ -27,8 +27,6 @@
   --shadow: 0 1px 2px rgba(16, 20, 30, .06), 0 6px 20px rgba(16, 20, 30, .06);
   --shadow-hero: 0 10px 30px rgba(30, 64, 175, .25);
   --hero-flag-veil: rgba(8, 14, 32, .62);
-  --hero-glass-edge: rgba(255, 255, 255, .7);
-  --hero-glass-shadow: rgba(15, 23, 42, .45);
   --shadow-on-hero: 0 4px 14px rgba(0, 0, 0, .18);
   --silver: #8a93a3;
   --sub-blue: #0a62bd;
@@ -62,8 +60,6 @@
     --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .25);
     --shadow-hero: 0 10px 30px rgba(34, 211, 238, .18);
     --hero-flag-veil: rgba(4, 7, 14, .7);
-    --hero-glass-edge: rgba(255, 255, 255, .45);
-    --hero-glass-shadow: rgba(0, 0, 0, .7);
     --silver: #c3cad6;
     --sub-blue: #60a5fa;
     --sub-blue-soft: rgba(96, 165, 250, .14);
@@ -95,8 +91,6 @@
   --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .25);
   --shadow-hero: 0 10px 30px rgba(34, 211, 238, .18);
   --hero-flag-veil: rgba(4, 7, 14, .7);
-  --hero-glass-edge: rgba(255, 255, 255, .45);
-  --hero-glass-shadow: rgba(0, 0, 0, .7);
   --silver: #c3cad6;
   --sub-blue: #60a5fa;
   --sub-blue-soft: rgba(96, 165, 250, .14);
@@ -216,52 +210,21 @@ main { max-width: 760px; margin: 0 auto; padding: 16px 16px 28px; outline: none;
   border-radius: 50%;
 }
 /* sfondo con la bandiera del paese del GP (heroFlag in app.js) */
-/* ...vista attraverso una lastra di vetro spessa in rilievo sulla pagina */
-.hero.flag {
-  background: var(--hero-end); border-radius: 22px;
-  box-shadow: 0 18px 40px -8px var(--hero-glass-shadow), 0 4px 12px -2px var(--hero-glass-shadow);
-}
+.hero.flag { background: var(--hero-end); }
+.hero.flag::after { display: none; }
 .hero-flag { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .hero.flag::before {                      /* velo: il testo bianco si legge su ogni bandiera */
   content: ""; position: absolute; inset: 0; z-index: 1;
   background:
-    radial-gradient(140% 120% at 50% 40%, transparent 55%, rgba(0, 0, 0, .28) 100%),   /* vetro spesso: piu' scuro ai bordi */
     linear-gradient(90deg, var(--hero-flag-veil) 0%, transparent 75%),
     linear-gradient(0deg, var(--hero-flag-veil) 0%, transparent 60%),
     linear-gradient(180deg, color-mix(in srgb, var(--hero-flag-veil) 70%, transparent) 0%, transparent 35%);
 }
-.hero.flag::after {                       /* riflesso obliquo + bordo smussato (sopra la bandiera) */
-  content: ""; position: absolute; inset: 0; z-index: 1; width: auto; height: auto;
-  border-radius: inherit; pointer-events: none;
-  background:
-    linear-gradient(118deg, transparent 6%, rgba(255, 255, 255, .1) 12%, rgba(255, 255, 255, .34) 27%,
-                    rgba(255, 255, 255, .16) 36%, transparent 36.6%),
-    linear-gradient(118deg, transparent 40%, rgba(255, 255, 255, .12) 42%, transparent 45%),
-    linear-gradient(180deg, rgba(255, 255, 255, .22) 0%, rgba(255, 255, 255, .05) 18%, transparent 30%);
-  box-shadow:
-    inset 0 1.5px 0 var(--hero-glass-edge),
-    inset 0 0 0 1px rgba(255, 255, 255, .16),
-    inset 1px 0 0 rgba(255, 255, 255, .1), inset -1px 0 0 rgba(255, 255, 255, .06),
-    inset 0 -3px 0 rgba(0, 0, 0, .28),
-    inset 0 -14px 24px -14px rgba(0, 0, 0, .35);
-}
 .hero.flag > :not(.hero-flag) { position: relative; z-index: 2; }
-.hero.flag .hero-top, .hero.flag .circuit, .hero.flag .hero-label, .hero.flag .hero-row b {
+.hero.flag .hero-top, .hero.flag h2, .hero.flag .circuit, .hero.flag .hero-label, .hero.flag .hero-row b {
   text-shadow: 0 1px 3px rgba(0, 0, 0, .45);
 }
-.hero.flag h2 { text-shadow: 0 2px 6px rgba(0, 0, 0, .5), 0 1px 0 rgba(0, 0, 0, .35); }
-/* tessere di vetro smerigliato in rilievo */
-.hero.flag .countdown div {
-  background: rgba(255, 255, 255, .13);
-  -webkit-backdrop-filter: blur(10px) saturate(1.4); backdrop-filter: blur(10px) saturate(1.4);
-  border: 1px solid rgba(255, 255, 255, .3);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45), inset 0 -1px 0 rgba(0, 0, 0, .25),
-              0 4px 10px rgba(0, 0, 0, .3);
-}
-.hero.flag .btn.light {
-  box-shadow: inset 0 1px 0 #fff, inset 0 -2px 0 rgba(0, 0, 0, .14), 0 6px 14px rgba(0, 0, 0, .32);
-}
-.hero.joined.flag { box-shadow: none; }
+.hero.flag .countdown div { background: rgba(0, 0, 0, .38); }
 .hero-top { display: flex; justify-content: space-between; align-items: center; gap: 8px;
             font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; opacity: .9; }
 .hero h2 { margin: 6px 0 0; font-size: 30px; line-height: 1.05; font-weight: 900; letter-spacing: -.5px; }
