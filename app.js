@@ -654,7 +654,8 @@ function viewSquadre(arg) {
           <div class="avatar" style="background:${col}">${esc(a.nome[0])}</div>
           <div class="grow" style="flex:1;min-width:0">
             <div class="name" style="font-weight:900;font-size:19px">${esc(a.nome)}</div>
-            <div class="meta muted small">${tot[a.nome] ? `${tot[a.nome].pos}° in classifica` : ""} · asta ${fmt(a.speso)} crediti</div>
+            <div class="meta muted small">${tot[a.nome] ? `${tot[a.nome].pos}° in classifica` : ""} · asta ${fmt(a.speso)} crediti${a.stato && a.stato !== "OK"
+              ? ` <span class="chip ko">⚠ ${esc(a.stato === "SFORATO" ? "Sforato" : a.stato.charAt(0) + a.stato.slice(1).toLowerCase())}</span>` : ""}</div>
           </div>
           <div class="right"><div class="pts big num">${fmt(tot[a.nome]?.tot ?? 0)}</div><div class="gap">punti</div></div>
         </div>
@@ -731,10 +732,12 @@ function statusList(st, rnd, conPiloti) {
   }).join("") + `</div>`;
 }
 
+const TITOLO_FORM = "Asta e Formazione";
+
 async function viewFormazione() {
   setTab("formazione");
   if (!sbOK()) {
-    view.innerHTML = `<h1 class="page-title">Formazione</h1>
+    view.innerHTML = `<h1 class="page-title">${TITOLO_FORM}</h1>
       <div class="card pad"><div class="alert info">L'invio delle formazioni dall'app non è ancora attivo.
       L'admin deve configurare Supabase (vedi GUIDA_APP.md).</div></div>`;
     return;
@@ -745,9 +748,12 @@ async function viewFormazione() {
   const inCorso = S.league.calendario.filter((c) => !c.importato && c.deadline && new Date(c.deadline) <= now).pop();
   const auth = lsGet("fm_auth");
   const player = auth && S.league.giocatori.find((g) => g.id === auth.id);
+  // asta: il form c'e' solo quando l'admin la apre (asta.py apri); se il database
+  // non ha ancora le funzioni dell'asta, vale come chiusa
+  const asta = await rpc("asta_stato", {}).then((a) => (a && a.aperta ? a : null)).catch(() => null);
 
   let main = "";
-  if (!lineup) {
+  if (!lineup && !asta) {
     main = `<div class="card pad"><div class="alert info">Non ci sono GP con formazioni aperte.</div></div>`;
   } else if (!player) {
     main = `
@@ -764,14 +770,21 @@ async function viewFormazione() {
         <p class="muted small center" style="margin:12px 0 0">Il PIN te lo dà l'admin della lega. Resta salvato su questo dispositivo.</p>
       </div>`;
   } else {
-    main = `<div class="card pad" id="lineup-box"><div class="loading" style="padding:30px 0"><div class="spinner"></div></div></div>`;
+    const attesa = `<div class="loading" style="padding:30px 0"><div class="spinner"></div></div>`;
+    main = (asta ? `${lineup ? `<div class="section-title"><span>Asta · la tua rosa</span></div>` : ""}
+        <div class="card pad" id="asta-box">${attesa}</div>` : "")
+      + (lineup ? `${asta ? `<div class="section-title"><span>Formazione · R${lineup.round}</span></div>` : ""}
+        <div class="card pad" id="lineup-box">${attesa}</div>` : "");
   }
 
   view.innerHTML = `
-    <h1 class="page-title">Formazione</h1>
-    ${lineup ? `<p class="page-sub">Round ${lineup.round} · <b>GP ${esc(lineup.gp)}</b> · chiude ${esc(fDateTime(new Date(lineup.deadline)))}</p>` : ""}
-    ${player ? `<p class="page-sub" style="margin-top:-12px">Ciao <b>${esc(player.nome)}</b> · <button class="linkbtn" id="logout">Esci</button></p>` : ""}
+    <h1 class="page-title">${TITOLO_FORM}</h1>
+    ${asta ? `<p class="page-sub"><b>Asta aperta</b> · dichiara piloti e team presi e i crediti spesi</p>` : ""}
+    ${lineup ? `<p class="page-sub"${asta ? ` style="margin-top:-12px"` : ""}>Round ${lineup.round} · <b>GP ${esc(lineup.gp)}</b> · chiude ${esc(fDateTime(new Date(lineup.deadline)))}</p>` : ""}
+    ${player && (lineup || asta) ? `<p class="page-sub" style="margin-top:-12px">Ciao <b>${esc(player.nome)}</b> · <button class="linkbtn" id="logout">Esci</button></p>` : ""}
     ${main}
+    ${asta ? `<div class="section-title"><span>Rose d'asta inviate</span></div>
+      <div class="card" id="asta-list">${listaAsta(asta)}</div>` : ""}
     ${lineup ? `<div class="section-title"><span>Chi ha già schierato · R${lineup.round}</span></div>
       <div class="card" id="status-next"><div class="empty">…</div></div>` : ""}
     ${inCorso ? `<div class="section-title"><span>Formazioni GP ${esc(inCorso.gp)}</span></div>
@@ -786,7 +799,7 @@ async function viewFormazione() {
     .then((st) => { document.getElementById("status-now").innerHTML = statusList(st, inCorso.round, true); })
     .catch((e) => { document.getElementById("status-now").innerHTML = `<div class="empty">${esc(e.message)}</div>`; });
 
-  if (!lineup) return;
+  if (!lineup && !asta) return;
   if (!player) {
     let chosen = null;
     const btn = document.getElementById("login-btn");
@@ -804,7 +817,8 @@ async function viewFormazione() {
       const msg = document.getElementById("login-msg");
       btn.disabled = true;
       try {
-        const r = await rpc("my_lineup", { p_player: chosen, p_pin: pin, p_round: lineup.round });
+        const r = lineup ? await rpc("my_lineup", { p_player: chosen, p_pin: pin, p_round: lineup.round })
+                         : await rpc("my_asta", { p_player: chosen, p_pin: pin });
         if (!r.ok) throw new Error(r.errore);
         lsSet("fm_auth", { id: chosen, pin });
         viewFormazione();
@@ -815,7 +829,141 @@ async function viewFormazione() {
     });
     return;
   }
-  editorFormazione(player, auth.pin, lineup);
+  if (asta) editorAsta(player, auth.pin, asta);
+  if (lineup) editorFormazione(player, auth.pin, lineup);
+}
+
+/* rose d'asta inviate da tutti (l'asta e' gia' avvenuta dal vivo: niente di segreto) */
+function listaAsta(st) {
+  const budget = st.budget ?? S.league.asta_regole?.budget;
+  const inviate = Object.fromEntries((st.inviate || []).map((x) => [x.player_id, x]));
+  return `<div class="list">` + S.league.giocatori.map((g) => {
+    const x = inviate[g.id];
+    const voci = x ? x.piloti.map((p) => `${esc(abbr(p.nome))} ${fmt(p.prezzo)}`)
+      .concat(x.team ? [`${esc(x.team)} ${fmt(x.prezzo_team)}`] : []) : [];
+    const speso = x ? x.piloti.reduce((s, p) => s + (+p.prezzo || 0), 0) + (+x.prezzo_team || 0) : 0;
+    const sfora = x && budget != null && speso > budget;
+    return `<div class="row">
+      <div class="avatar" style="background:${playerColor(g.nome)};width:34px;height:34px;font-size:15px;border-radius:10px">${esc(g.nome[0])}</div>
+      <div class="grow"><div class="name">${esc(g.nome)}</div>
+        <div class="meta">${x ? voci.join(" · ") : "non ancora inviata"}</div></div>
+      ${x ? `<div class="right"><div class="pts num ${sfora ? "minus" : ""}">${fmt(speso)}</div><div class="gap">${sfora ? "⚠ sforato" : "crediti"}</div></div>`
+          : `<span class="chip ko">—</span>`}
+    </div>`;
+  }).join("") + `</div>`;
+}
+
+async function editorAsta(player, pin, asta) {
+  const box = document.getElementById("asta-box");
+  let saved = null;
+  try {
+    const r = await rpc("my_asta", { p_player: player.id, p_pin: pin });
+    if (!r.ok) {
+      lsSet("fm_auth", null);
+      box.innerHTML = `<div class="alert ko">${esc(r.errore)}</div><button class="btn ghost block" onclick="location.reload()">Accedi di nuovo</button>`;
+      return;
+    }
+    saved = r.rosa;
+  } catch (e) {
+    box.innerHTML = `<div class="alert ko">${esc(e.message)}</div>`;
+    return;
+  }
+  const reg = S.league.asta_regole || {};
+  const budget = asta.budget ?? reg.budget ?? 1000;
+  const nP = asta.n_piloti ?? reg.n_piloti ?? 3;
+  const nT = asta.n_team ?? reg.n_team ?? 1;
+  const listino = (tipo) => (asta.listino || []).filter((x) => x.tipo === tipo).map((x) => x.nome);
+  const listP = listino("pilota"), listT = listino("team");
+  // piloti e team esclusivi: quelli dichiarati dagli altri non si possono scegliere
+  const presi = {};
+  for (const x of asta.inviate || []) {
+    if (x.player_id === player.id) continue;
+    x.piloti.forEach((p) => { presi[p.nome] = x.nome; });
+    if (x.team) presi[x.team] = x.nome;
+  }
+  // scelte correnti: piloti 0..nP-1, poi il team
+  const sel = Array.from({ length: nP }, (_, i) => ({
+    nome: saved?.piloti?.[i]?.nome || "", prezzo: saved?.piloti?.[i] ? String(saved.piloti[i].prezzo) : "" }));
+  if (nT > 0) sel.push({ nome: saved?.team || "", prezzo: saved?.team ? String(saved.prezzo_team ?? "") : "", team: true });
+  const firma = (v) => JSON.stringify(v.map((x) => [x.nome, x.prezzo]));
+  let inviata = saved ? firma(sel) : null;
+  const intero = (s) => /^\d{1,5}$/.test(String(s).trim());
+
+  const riga = (x, i) => {
+    const lista = x.team ? listT : listP;
+    const altri = new Set(sel.filter((y, j) => j !== i && !!y.team === !!x.team).map((y) => y.nome));
+    return `<div class="asta-row">
+      <select class="input" data-i="${i}" aria-label="${x.team ? "Team" : "Pilota " + (i + 1)}">
+        <option value="">${x.team ? "Scegli il team…" : `Scegli il pilota ${i + 1}…`}</option>
+        ${lista.map((n) => {
+          const chi = presi[n];
+          return `<option value="${esc(n)}" ${n === x.nome ? "selected" : ""} ${chi || altri.has(n) ? "disabled" : ""}>${esc(n)}${
+            chi ? ` · preso da ${esc(chi)}` : ""}</option>`;
+        }).join("")}
+      </select>
+      <input class="input cr num" data-i="${i}" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="5"
+        placeholder="crediti" aria-label="Crediti spesi" value="${esc(x.prezzo)}">
+    </div>`;
+  };
+
+  // totale, avviso tetto e pulsante: aggiornati a ogni tasto senza ridisegnare i campi
+  const aggiorna = () => {
+    const speso = sel.reduce((s, x) => s + (intero(x.prezzo) ? +x.prezzo : 0), 0);
+    const completa = sel.every((x) => x.nome && intero(x.prezzo));
+    const oltre = speso - budget;
+    box.querySelector("#asta-tot").innerHTML = `
+      <div class="asta-tot"><span>Speso <b class="num">${fmt(speso)}</b></span>
+        <span>Residuo <b class="num ${oltre > 0 ? "minus" : ""}">${fmt(budget - speso)}</b> su ${fmt(budget)}</span></div>
+      ${oltre > 0 ? `<div class="alert ko">⚠️ <b>Superi il tetto di ${fmt(oltre)} crediti.</b> Controlla i prezzi: puoi inviare lo stesso, ma l'admin vedrà l'avviso.</div>` : ""}`;
+    const btn = box.querySelector("#asta-send");
+    const cambiata = firma(sel) !== inviata;
+    btn.disabled = !completa || !cambiata;
+    btn.textContent = !completa ? "Completa piloti, team e crediti"
+      : inviata ? (cambiata ? "Aggiorna rosa d'asta" : "Rosa d'asta già inviata") : "Invia rosa d'asta";
+  };
+
+  const render = (msg = "") => {
+    box.innerHTML = `
+      ${msg}
+      ${saved ? `<div class="alert ok">✓ Rosa d'asta inviata il ${esc(fDateTime(new Date(saved.submitted_at)))}</div>`
+              : `<div class="alert info">Indica i ${nP} piloti${nT ? " e il team" : ""} che hai preso all'asta e i crediti spesi per ognuno.</div>`}
+      <div class="field"><label>Piloti</label></div>
+      ${sel.filter((x) => !x.team).map((x) => riga(x, sel.indexOf(x))).join("")}
+      ${nT ? `<div class="field" style="margin-top:6px"><label>Team</label></div>${riga(sel[nP], nP)}` : ""}
+      <div id="asta-tot"></div>
+      <button class="btn block" id="asta-send" style="margin-top:12px"></button>
+      <p class="muted small center" style="margin:10px 0 0">Puoi correggerla finché l'asta è aperta. L'admin la porta nel foglio ASTA.</p>`;
+    box.querySelectorAll("select[data-i]").forEach((s) => s.addEventListener("change", () => {
+      sel[+s.dataset.i].nome = s.value;
+      render();                  // aggiorna i piloti disabilitati negli altri campi
+    }));
+    box.querySelectorAll("input[data-i]").forEach((inp) => inp.addEventListener("input", () => {
+      sel[+inp.dataset.i].prezzo = inp.value.trim();
+      aggiorna();
+    }));
+    box.querySelector("#asta-send").addEventListener("click", invia);
+    aggiorna();
+  };
+
+  const invia = async () => {
+    const btn = box.querySelector("#asta-send");
+    btn.disabled = true;
+    btn.textContent = "Invio…";
+    const piloti = sel.filter((x) => !x.team).map((x) => ({ nome: x.nome, prezzo: +x.prezzo }));
+    const team = sel.find((x) => x.team);
+    try {
+      const r = await rpc("submit_asta", { p_player: player.id, p_pin: pin, p_piloti: piloti,
+        p_team: team ? team.nome : null, p_prezzo_team: team ? +team.prezzo : null });
+      if (!r.ok) throw new Error(r.errore);
+      saved = { piloti, team: team?.nome, prezzo_team: team ? +team.prezzo : null, submitted_at: r.submitted_at };
+      inviata = firma(sel);
+      render(`<div class="alert ok"><b>Fatto!</b> Rosa d'asta inviata: ${fmt(r.speso)} crediti spesi.</div>`);
+      rpc("asta_stato", {}).then((st) => { document.getElementById("asta-list").innerHTML = listaAsta(st); });
+    } catch (e) {
+      render(`<div class="alert ko">${esc(e.message)}</div>`);
+    }
+  };
+  render();
 }
 
 async function editorFormazione(player, pin, lineup) {
