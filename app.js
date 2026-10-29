@@ -256,6 +256,7 @@ async function viewHome() {
 
   view.innerHTML = `
     ${hero}${provv}
+    ${segnalaCard()}
     <div id="notif"></div>
     <div class="section-title"><span>Classifica generale</span><a href="#/classifica">Completa →</a></div>
     <div class="card">${standingsRows(5)}</div>
@@ -263,6 +264,7 @@ async function viewHome() {
     <p class="foot">Dati aggiornati al ${esc(fDateTime(new Date(S.league.aggiornato)))}</p>
     <p class="foot" id="notif-foot"></p>`;
   if (c && lineup && lineup.round === c.round) startCountdown("cd", lineup.deadline);
+  contaSegnalazioni();
   notifUI();
 }
 
@@ -798,19 +800,7 @@ async function viewFormazione() {
   if (!lineup && !asta) {
     main = `<div class="card pad"><div class="alert info">Non ci sono GP con formazioni aperte.</div></div>`;
   } else if (!player) {
-    main = `
-      <div class="card pad">
-        <div class="field"><label>Chi sei?</label>
-          <div class="players-pick" id="who">${S.league.giocatori.map((g) =>
-            `<button type="button" data-id="${esc(g.id)}">${esc(g.nome)}</button>`).join("")}</div></div>
-        <form id="login">
-          <div class="field"><label for="pin">PIN</label>
-            <input class="input" id="pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Il tuo PIN" required></div>
-          <div id="login-msg"></div>
-          <button class="btn block" type="submit" disabled id="login-btn">Entra</button>
-        </form>
-        <p class="muted small center" style="margin:12px 0 0">Il PIN te lo dà l'admin della lega. Resta salvato su questo dispositivo.</p>
-      </div>`;
+    main = loginHTML();
   } else {
     const attesa = `<div class="loading" style="padding:30px 0"><div class="spinner"></div></div>`;
     main = (asta ? `${lineup ? `<div class="section-title"><span>Asta · la tua rosa</span></div>` : ""}
@@ -825,6 +815,7 @@ async function viewFormazione() {
     ${lineup ? `<p class="page-sub"${asta ? ` style="margin-top:-12px"` : ""}>Round ${lineup.round} · <b>GP ${esc(lineup.gp)}</b> · chiude ${esc(fDateTime(new Date(lineup.deadline)))}</p>` : ""}
     ${player && (lineup || asta) ? `<p class="page-sub" style="margin-top:-12px">Ciao <b>${esc(player.nome)}</b> · <button class="linkbtn" id="logout">Esci</button></p>` : ""}
     ${main}
+    ${segnalaCard()}
     ${asta ? `<div class="section-title"><span>Rose d'asta inviate</span></div>
       <div class="card" id="asta-list">${listaAsta(asta)}</div>` : ""}
     ${lineup ? `<div class="section-title"><span>Chi ha già schierato · R${lineup.round}</span></div>
@@ -833,6 +824,7 @@ async function viewFormazione() {
       <div class="card" id="status-now"><div class="empty">…</div></div>` : ""}`;
 
   document.getElementById("logout")?.addEventListener("click", () => { lsSet("fm_auth", null); viewFormazione(); });
+  contaSegnalazioni();
 
   if (lineup) rpc("lineup_status", { p_round: lineup.round })
     .then((st) => { document.getElementById("status-next").innerHTML = statusList(st, lineup.round, false); })
@@ -843,36 +835,57 @@ async function viewFormazione() {
 
   if (!lineup && !asta) return;
   if (!player) {
-    let chosen = null;
-    const btn = document.getElementById("login-btn");
-    document.getElementById("who").addEventListener("click", (e) => {
-      const b = e.target.closest("button");
-      if (!b) return;
-      chosen = b.dataset.id;
-      document.querySelectorAll("#who button").forEach((x) => x.classList.toggle("on", x === b));
-      btn.disabled = false;
-      document.getElementById("pin").focus();
-    });
-    document.getElementById("login").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const pin = document.getElementById("pin").value.trim();
-      const msg = document.getElementById("login-msg");
-      btn.disabled = true;
-      try {
-        const r = lineup ? await rpc("my_lineup", { p_player: chosen, p_pin: pin, p_round: lineup.round })
-                         : await rpc("my_asta", { p_player: chosen, p_pin: pin });
-        if (!r.ok) throw new Error(r.errore);
-        lsSet("fm_auth", { id: chosen, pin });
-        viewFormazione();
-      } catch (err) {
-        msg.innerHTML = `<div class="alert ko">${esc(err.message)}</div>`;
-        btn.disabled = false;
-      }
-    });
+    attivaLogin((id, pin) => lineup ? rpc("my_lineup", { p_player: id, p_pin: pin, p_round: lineup.round })
+                                    : rpc("my_asta", { p_player: id, p_pin: pin }), viewFormazione);
     return;
   }
   if (asta) editorAsta(player, auth.pin, asta);
   if (lineup) editorFormazione(player, auth.pin, lineup);
+}
+
+/* accesso con PIN (formazione, asta, segnalazioni): resta salvato in fm_auth */
+function loginHTML() {
+  return `
+      <div class="card pad">
+        <div class="field"><label>Chi sei?</label>
+          <div class="players-pick" id="who">${S.league.giocatori.map((g) =>
+            `<button type="button" data-id="${esc(g.id)}">${esc(g.nome)}</button>`).join("")}</div></div>
+        <form id="login">
+          <div class="field"><label for="pin">PIN</label>
+            <input class="input" id="pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Il tuo PIN" required></div>
+          <div id="login-msg"></div>
+          <button class="btn block" type="submit" disabled id="login-btn">Entra</button>
+        </form>
+        <p class="muted small center" style="margin:12px 0 0">Il PIN te lo dà l'admin della lega. Resta salvato su questo dispositivo.</p>
+      </div>`;
+}
+
+function attivaLogin(verifica, dopo) {
+  let chosen = null;
+  const btn = document.getElementById("login-btn");
+  document.getElementById("who").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    chosen = b.dataset.id;
+    document.querySelectorAll("#who button").forEach((x) => x.classList.toggle("on", x === b));
+    btn.disabled = false;
+    document.getElementById("pin").focus();
+  });
+  document.getElementById("login").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const pin = document.getElementById("pin").value.trim();
+    const msg = document.getElementById("login-msg");
+    btn.disabled = true;
+    try {
+      const r = await verifica(chosen, pin);
+      if (!r.ok) throw new Error(r.errore);
+      lsSet("fm_auth", { id: chosen, pin });
+      dopo();
+    } catch (err) {
+      msg.innerHTML = `<div class="alert ko">${esc(err.message)}</div>`;
+      btn.disabled = false;
+    }
+  });
 }
 
 /* rose d'asta inviate da tutti (l'asta e' gia' avvenuta dal vivo: niente di segreto) */
@@ -1086,6 +1099,184 @@ async function editorFormazione(player, pin, lineup) {
   render();
 }
 
+/* ======================================================== SEGNALAZIONI */
+// eventi che gli script non leggono dai PDF (caselle gialle del foglio GP): li
+// segnalano i giocatori e segnalazioni.py li porta nel foglio. Stesso elenco in
+// segnalazioni.py e supabase/schema.sql.
+const EVENTI = [
+  { k: "cadute_prove", s: "Prove", l: "Caduta", p: "p_caduta_prove" },
+  { k: "ostacolo_prove", s: "Prove", l: "Ha ostacolato un pilota", p: "p_ostacolo_prove" },
+  { k: "cadute_qual", s: "Qualifiche", l: "Caduta in Q1/Q2", p: "p_caduta_qual" },
+  { k: "ostacolo_qual", s: "Qualifiche", l: "Ha ostacolato un pilota", p: "p_ostacolo_qual" },
+  { k: "pen_griglia", s: "Qualifiche", l: "Penalità in griglia", p: "p_pen_griglia" },
+  { k: "pen_gp_succ", s: "Sprint", l: "Penalità per il GP successivo", p: "p_spr_pen_next" },
+  { k: "gesto", s: "Premi", l: "Gesto iconico", p: "p_gesto_iconico" },
+  { k: "strage", s: "Premi", l: "Strage (tira giù altri piloti)", p: "p_strage" },
+  { k: "comportamento", s: "Premi", l: "Comportamento scorretto", p: "p_comportamento" },
+];
+const EVENTO = Object.fromEntries(EVENTI.map((e) => [e.k, e]));
+const puntiReg = (param) => {
+  for (const s of S.league.regolamento.sezioni) {
+    const v = s.voci.find((x) => x.parametro === param);
+    if (v) return v.valore;
+  }
+  return null;
+};
+const etichettaEvento = (k) => {
+  const e = EVENTO[k];
+  return e ? (e.s === "Premi" ? e.l : `${e.l} · ${e.s.toLowerCase()}`) : k;
+};
+
+// GP con segnalazioni aperte: dal giorno prima della deadline a 5 giorni dopo
+// (come _segnalazioni_aperte in schema.sql)
+function roundSegnalazioni() {
+  const now = Date.now();
+  return S.league.calendario.find((c) => c.deadline && !c.importato &&
+    now >= new Date(c.deadline) - 864e5 && now <= +new Date(c.deadline) + 5 * 864e5) || null;
+}
+
+function segnalaCard() {
+  const c = sbOK() && roundSegnalazioni();
+  return c ? `<a class="card pad seg-card" href="#/segnala">
+      <span class="seg-ico">🚨</span>
+      <div class="grow"><div class="name">Segnalazioni · GP ${esc(c.gp)}</div>
+        <div class="meta muted small" id="seg-count">Cadute, penalità, premi: segnala quello che vedi</div></div>
+      <span class="chip accent">Segnala →</span></a>` : "";
+}
+
+function contaSegnalazioni() {
+  const c = sbOK() && roundSegnalazioni();
+  if (!c) return;
+  rpc("segnalazioni_stato", { p_round: c.round }).then((st) => {
+    const n = (st.eventi || []).length, el = document.getElementById("seg-count");
+    if (el && n) el.textContent = `${n} ${n === 1 ? "evento segnalato" : "eventi segnalati"} finora · tocca per aggiungere`;
+  }).catch(() => {});
+}
+
+async function viewSegnala() {
+  setTab("home");
+  const titolo = `<h1 class="page-title">Segnalazioni</h1>`;
+  const c = roundSegnalazioni();
+  if (!sbOK() || !c) {
+    view.innerHTML = `${titolo}<div class="card pad"><div class="alert info">
+      ${sbOK() ? "Le segnalazioni si aprono il giorno prima della deadline delle formazioni e restano aperte per tutto il weekend."
+               : "Le segnalazioni dall'app non sono ancora attive."}</div></div>`;
+    return;
+  }
+  const auth = lsGet("fm_auth");
+  const player = auth && S.league.giocatori.find((g) => g.id === auth.id);
+  view.innerHTML = `${titolo}
+    <p class="page-sub">Round ${c.round} · <b>GP ${esc(c.gp)}</b> · eventi che i PDF ufficiali non riportano</p>
+    ${player ? `<p class="page-sub" style="margin-top:-12px">Ciao <b>${esc(player.nome)}</b> · <button class="linkbtn" id="logout">Esci</button></p>` : ""}
+    ${player ? `<div class="card pad" id="seg-form"></div>` : loginHTML()}
+    <div class="alert info" style="margin-top:12px">Contano dopo il ricalcolo di fine weekend. Se più giocatori segnalano
+      la stessa cosa conta <b>una volta sola</b>: se succede di nuovo, usa <b>+1</b>.</div>
+    <div class="section-title"><span>Segnalato finora</span></div>
+    <div class="card" id="seg-list"><div class="loading" style="padding:30px 0"><div class="spinner"></div></div></div>`;
+  document.getElementById("logout")?.addEventListener("click", () => { lsSet("fm_auth", null); viewSegnala(); });
+  if (!player) {
+    attivaLogin((id, pin) => rpc("my_lineup", { p_player: id, p_pin: pin, p_round: c.round }), viewSegnala);
+  }
+
+  let st = { eventi: [] };
+  let scelta = { pilota: "", campo: "" };
+  const lista = document.getElementById("seg-list");
+  const form = document.getElementById("seg-form");
+  const mia = (ev) => player && ev.chi.find((x) => x.player_id === player.id);
+
+  const invia = async (pilota, campo, n, okMsg) => {
+    try {
+      const r = await rpc("segnala", { p_player: player.id, p_pin: auth.pin, p_round: c.round,
+        p_pilota: pilota, p_campo: campo, p_n: n });
+      if (!r.ok) throw new Error(r.errore);
+      await carica();
+      return `<div class="alert ok">${okMsg}</div>`;
+    } catch (e) {
+      return `<div class="alert ko">${esc(e.message)}</div>`;
+    }
+  };
+
+  const disegnaLista = () => {
+    const ev = st.eventi || [];
+    if (!ev.length) { lista.innerHTML = `<div class="empty">Ancora nessuna segnalazione per questo GP</div>`; return; }
+    lista.innerHTML = `<div class="list">${ev.map((e) => {
+      const pt = puntiReg(EVENTO[e.campo]?.p), io = mia(e), info = riderInfo(e.pilota);
+      return `<div class="row seg-row">
+        ${racenum(info.numero)}
+        <div class="grow"><div class="name">${esc(e.pilota)}</div>
+          <div class="meta">${esc(etichettaEvento(e.campo))}${e.n > 1 ? ` <b>×${e.n}</b>` : ""}${
+            pt != null ? ` · <span class="${sign(pt)}">${fmtS(pt * e.n)} pt</span>` : ""}</div>
+          <div class="meta muted small">${e.chi.map((x) => esc(x.nome) + (x.n > 1 ? " ×" + x.n : "")).join(", ")}</div></div>
+        ${player ? `<div class="seg-act">
+          ${io ? "" : `<button class="btn sm ghost" data-p="${esc(e.pilota)}" data-k="${esc(e.campo)}" data-n="${e.n}">Confermo</button>`}
+          ${e.n < 9 ? `<button class="btn sm" data-p="${esc(e.pilota)}" data-k="${esc(e.campo)}" data-n="${e.n + 1}" title="È successo un'altra volta">+1</button>` : ""}
+          ${io ? `<button class="btn sm ghost" data-p="${esc(e.pilota)}" data-k="${esc(e.campo)}" data-n="0">Togli</button>` : ""}
+        </div>` : ""}
+      </div>`;
+    }).join("")}</div>`;
+  };
+
+  const disegnaForm = (msg = "") => {
+    if (!form) return;
+    const gruppi = [...new Set(EVENTI.map((e) => e.s))];
+    const piloti = S.league.piloti.slice().sort((a, b) => a.nome.localeCompare(b.nome));
+    form.innerHTML = `${msg}
+      <div class="field"><label for="seg-pilota">Pilota</label>
+        <select class="input" id="seg-pilota"><option value="">Scegli il pilota…</option>
+          ${piloti.map((p) => `<option value="${esc(p.nome)}" ${p.nome === scelta.pilota ? "selected" : ""}>${
+            esc(p.nome)}${p.numero != null ? " #" + esc(p.numero) : ""} · ${esc(p.team)}</option>`).join("")}
+        </select></div>
+      <div class="field"><label>Cosa è successo</label>
+        ${gruppi.map((g) => `<div class="seg-grp"><small>${esc(g)}</small><div class="seg-chips">
+          ${EVENTI.filter((e) => e.s === g).map((e) => {
+            const pt = puntiReg(e.p);
+            return `<button type="button" class="seg-chip ${scelta.campo === e.k ? "on" : ""}" data-k="${e.k}">
+              ${esc(e.l)}${pt != null ? ` <span class="${sign(pt)}">${fmtS(pt)}</span>` : ""}</button>`;
+          }).join("")}</div></div>`).join("")}</div>
+      <button class="btn block" id="seg-send" ${scelta.pilota && scelta.campo ? "" : "disabled"}>Segnala</button>`;
+    form.querySelector("#seg-pilota").addEventListener("change", (e) => { scelta.pilota = e.target.value; disegnaForm(); });
+    form.querySelectorAll(".seg-chip").forEach((b) => b.addEventListener("click", () => {
+      scelta.campo = scelta.campo === b.dataset.k ? "" : b.dataset.k;
+      disegnaForm();
+    }));
+    form.querySelector("#seg-send").addEventListener("click", async (e) => {
+      e.target.disabled = true;
+      e.target.textContent = "Invio…";
+      const gia = (st.eventi || []).find((x) => x.pilota === scelta.pilota && x.campo === scelta.campo);
+      const testo = `${esc(scelta.pilota)} · ${esc(etichettaEvento(scelta.campo))}`;
+      if (gia && mia(gia)) {
+        disegnaForm(`<div class="alert info">Hai già segnalato ${testo}. Se è successo di nuovo, tocca <b>+1</b> nella lista.</div>`);
+        return;
+      }
+      // gia' segnalato da altri: e' la stessa cosa, mi aggiungo senza aumentare il numero
+      const m = await invia(scelta.pilota, scelta.campo, gia ? gia.n : 1,
+        gia ? `<b>Confermato:</b> ${testo} (l'aveva già segnalato ${esc(gia.chi.map((x) => x.nome).join(", "))})`
+            : `<b>Segnalato:</b> ${testo}`);
+      if (m.includes("alert ok")) scelta = { pilota: "", campo: "" };
+      disegnaForm(m);
+    });
+  };
+
+  const carica = async () => {
+    st = await rpc("segnalazioni_stato", { p_round: c.round });
+    disegnaLista();
+  };
+
+  lista.addEventListener("click", async (e) => {
+    const b = e.target.closest("button[data-k]");
+    if (!b || !player) return;
+    b.disabled = true;
+    const n = +b.dataset.n, testo = `${esc(b.dataset.p)} · ${esc(etichettaEvento(b.dataset.k))}`;
+    const m = await invia(b.dataset.p, b.dataset.k, n,
+      n === 0 ? `Tolta la tua segnalazione: ${testo}` : `<b>Fatto:</b> ${testo}${n > 1 ? " ×" + n : ""}`);
+    disegnaForm(m);
+  });
+
+  disegnaForm();
+  try { await carica(); }
+  catch (e) { lista.innerHTML = `<div class="empty">Segnalazioni non disponibili: l'admin deve aggiornare il database.</div>`; }
+}
+
 /* ========================================================== CALENDARIO */
 function viewCalendario() {
   setTab("calendario");
@@ -1144,6 +1335,7 @@ async function route() {
       case "gp": await viewGP(a, b); break;
       case "squadre": viewSquadre(a); break;
       case "formazione": await viewFormazione(); break;
+      case "segnala": await viewSegnala(); break;
       case "calendario": viewCalendario(); break;
       case "regolamento": viewRegolamento(); break;
       default: await viewHome();

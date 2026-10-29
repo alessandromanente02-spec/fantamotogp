@@ -480,6 +480,23 @@ table.grid td.best { color: var(--pos); font-weight: 700; }
 .alert.ko { background: var(--neg-soft); color: var(--neg); }
 .alert.info { background: var(--surface-2); color: var(--text); }
 .linkbtn { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; font-weight: 700; }
+/* segnalazioni del weekend */
+.seg-card { display: flex; align-items: center; gap: 12px; margin-top: 12px; color: var(--text); }
+.seg-card .grow { flex: 1; min-width: 0; }
+.seg-card .name { font-weight: 700; }
+.seg-ico { font-size: 24px; line-height: 1; }
+.seg-grp { margin-bottom: 10px; }
+.seg-grp small { display: block; font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+                 letter-spacing: .6px; color: var(--muted); margin-bottom: 6px; }
+.seg-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg-chip {
+  padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg);
+  font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.seg-chip span { font-weight: 800; margin-left: 2px; }
+.seg-chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.seg-row .grow { flex: 1; min-width: 0; }
+.seg-act { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 /* asta: pilota/team + crediti spesi */
 .asta-row { display: grid; grid-template-columns: minmax(0, 1fr) 92px; gap: 8px; margin-bottom: 8px; }
 .asta-row select.input { min-width: 0; text-overflow: ellipsis; }
