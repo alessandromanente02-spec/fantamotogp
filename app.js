@@ -57,6 +57,47 @@ const ownerChip = (o) => o
 const racenum = (n) => n != null ? `<span class="racenum">${esc(n)}</span>` : "";
 const CHEV = `<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>`;
 const SKULL = "💀";
+// bandiere del box del GP in Home (site/flags/xx.svg, da flag-icons, licenza MIT):
+// se il calendario aggiunge un paese, va aggiunto qui e scaricata la sua bandiera
+const FLAG_CODES = {
+  "Australia": "au", "Austria": "at", "Brasile": "br", "Francia": "fr", "Germania": "de",
+  "Giappone": "jp", "Indonesia": "id", "Italia": "it", "Malesia": "my", "Paesi Bassi": "nl",
+  "Portogallo": "pt", "Qatar": "qa", "Regno Unito": "gb", "Rep. Ceca": "cz", "San Marino": "sm",
+  "Spagna": "es", "Thailandia": "th", "USA": "us", "Ungheria": "hu",
+};
+// bandiera "al vento" ma ferma: un'onda (sinusoide obliqua, piu' ampia verso il
+// lato libero) sposta la stoffa (feDisplacementMap) e la stessa onda, sfasata,
+// disegna luci e ombre delle pieghe. Tutto calcolato: sempre uguale, niente rumore.
+const FLAG_WAVE = (() => {
+  const N = 48, mappa = [], pieghe = [];
+  for (let i = 0; i <= N; i++) {
+    const t = i / N, fase = 2 * Math.PI * (1.75 * t + 0.08), amp = 0.35 + 0.65 * t;
+    const off = (t * 100).toFixed(1) + "%";
+    const g = Math.round(255 * (0.5 + 0.42 * amp * Math.sin(fase)));
+    const r = Math.round(255 * (0.5 + 0.18 * amp * Math.cos(fase)));
+    mappa.push(`<stop offset='${off}' stop-color='rgb(${r},${g},128)'/>`);
+    const luce = -Math.cos(fase) * amp;          // pendenza dell'onda: verso la luce o in ombra
+    pieghe.push(`<stop offset="${off}" stop-color="${luce > 0 ? "#fff" : "#000"}" stop-opacity="${(luce > 0 ? 0.24 : 0.34) * Math.abs(luce)}"/>`);
+  }
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='480' height='320'><linearGradient id='g' x1='0' y1='0' x2='1' y2='.35'>${
+    mappa.join("")}</linearGradient><rect width='480' height='320' fill='url(#g)'/></svg>`;
+  return { mappa: "data:image/svg+xml," + encodeURIComponent(svg), pieghe: pieghe.join("") };
+})();
+const heroFlag = (paese) => {
+  const code = FLAG_CODES[paese];
+  return code ? `<svg class="hero-flag" viewBox="0 0 400 240" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <defs>
+      <filter id="vento" filterUnits="userSpaceOnUse" x="-40" y="-40" width="480" height="320" color-interpolation-filters="sRGB">
+        <feImage href="${FLAG_WAVE.mappa}" x="-40" y="-40" width="480" height="320" preserveAspectRatio="none" result="onda"/>
+        <feDisplacementMap in="SourceGraphic" in2="onda" scale="44" xChannelSelector="R" yChannelSelector="G"/>
+        <feGaussianBlur stdDeviation="0.5"/><!-- ammorbidisce i bordi seghettati dello spostamento -->
+      </filter>
+      <linearGradient id="pieghe" x1="0" y1="0" x2="1" y2=".35">${FLAG_WAVE.pieghe}</linearGradient>
+    </defs>
+    <image href="flags/${code}.svg" x="-40" y="-40" width="480" height="320" preserveAspectRatio="xMidYMid slice" filter="url(#vento)"/>
+    <rect x="-40" y="-40" width="480" height="320" fill="url(#pieghe)"/>
+  </svg>` : "";
+};
 const ANNULLATA = "Contano prove, qualifiche e Sprint; i team prendono classifica e premi della Sprint.";
 
 /* -------------------------------------------------------- calendario */
@@ -132,8 +173,9 @@ async function viewHome() {
   const c = current || lineup;
   if (c) {
     const aperta = lineup && lineup.round === c.round;
+    const bandiera = heroFlag(c.paese);
     hero = `
-    <section class="hero">
+    <section class="hero${bandiera ? " flag" : ""}">${bandiera}
       <div class="hero-top"><span>Round ${c.round} / 22</span><span>${fDate(dayDate(c.data), { weekday: "short", day: "numeric", month: "long" })}</span></div>
       <h2>GP ${esc(c.gp)}</h2>
       <div class="circuit">${esc(c.circuito)} · ${esc(c.paese)}${c.sprint ? " · con Sprint" : ""}</div>
@@ -183,7 +225,7 @@ async function viewHome() {
       </section>`;
     } catch (e) { provv = ""; }
   }
-  if (provv) hero = hero.replace('<section class="hero">', '<section class="hero joined">');
+  if (provv) hero = hero.replace('<section class="hero', '<section class="hero joined');
 
   let lastGP = "";
   if (last) {

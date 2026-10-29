@@ -26,6 +26,7 @@
   --radius: 16px;
   --shadow: 0 1px 2px rgba(16, 20, 30, .06), 0 6px 20px rgba(16, 20, 30, .06);
   --shadow-hero: 0 10px 30px rgba(30, 64, 175, .25);
+  --hero-flag-veil: rgba(8, 14, 32, .62);
   --shadow-on-hero: 0 4px 14px rgba(0, 0, 0, .18);
   --silver: #8a93a3;
   --sub-blue: #0a62bd;
@@ -58,6 +59,7 @@
     --provv-top: #155e75;
     --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .25);
     --shadow-hero: 0 10px 30px rgba(34, 211, 238, .18);
+    --hero-flag-veil: rgba(4, 7, 14, .7);
     --silver: #c3cad6;
     --sub-blue: #60a5fa;
     --sub-blue-soft: rgba(96, 165, 250, .14);
@@ -88,6 +90,7 @@
   --provv-top: #155e75;
   --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .25);
   --shadow-hero: 0 10px 30px rgba(34, 211, 238, .18);
+  --hero-flag-veil: rgba(4, 7, 14, .7);
   --silver: #c3cad6;
   --sub-blue: #60a5fa;
   --sub-blue-soft: rgba(96, 165, 250, .14);
@@ -206,6 +209,22 @@ main { max-width: 760px; margin: 0 auto; padding: 16px 16px 28px; outline: none;
   background: repeating-linear-gradient(45deg, rgba(255,255,255,.08) 0 12px, transparent 12px 24px);
   border-radius: 50%;
 }
+/* sfondo con la bandiera del paese del GP (heroFlag in app.js) */
+.hero.flag { background: var(--hero-end); }
+.hero.flag::after { display: none; }
+.hero-flag { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.hero.flag::before {                      /* velo: il testo bianco si legge su ogni bandiera */
+  content: ""; position: absolute; inset: 0; z-index: 1;
+  background:
+    linear-gradient(90deg, var(--hero-flag-veil) 0%, transparent 75%),
+    linear-gradient(0deg, var(--hero-flag-veil) 0%, transparent 60%),
+    linear-gradient(180deg, color-mix(in srgb, var(--hero-flag-veil) 70%, transparent) 0%, transparent 35%);
+}
+.hero.flag > :not(.hero-flag) { position: relative; z-index: 2; }
+.hero.flag .hero-top, .hero.flag h2, .hero.flag .circuit, .hero.flag .hero-label, .hero.flag .hero-row b {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .45);
+}
+.hero.flag .countdown div { background: rgba(0, 0, 0, .38); }
 .hero-top { display: flex; justify-content: space-between; align-items: center; gap: 8px;
             font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; opacity: .9; }
 .hero h2 { margin: 6px 0 0; font-size: 30px; line-height: 1.05; font-weight: 900; letter-spacing: -.5px; }
