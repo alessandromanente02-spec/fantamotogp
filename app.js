@@ -227,8 +227,11 @@ async function viewHome() {
   }
   if (provv) hero = hero.replace('<section class="hero', '<section class="hero joined');
 
+  // weekend in corso con provvisori (da venerdi' a "weekend.py gp"): classifica
+  // generale, ultimo GP e top piloti si confonderebbero con i provvisori
+  const weekend = !!pv;
   let lastGP = "";
-  if (last) {
+  if (last && !weekend) {
     const R = await getRound(last);
     const top = R.giocatori.slice(0, 3);
     const order = [top[1], top[0], top[2]];
@@ -258,8 +261,8 @@ async function viewHome() {
     ${hero}${provv}
     ${segnalaCard()}
     <div id="notif"></div>
-    <div class="section-title"><span>Classifica generale</span><a href="#/classifica">Completa →</a></div>
-    <div class="card">${standingsRows(5)}</div>
+    ${weekend ? "" : `<div class="section-title"><span>Classifica generale</span><a href="#/classifica">Completa →</a></div>
+    <div class="card">${standingsRows(5)}</div>`}
     ${lastGP}
     <p class="foot">Dati aggiornati al ${esc(fDateTime(new Date(S.league.aggiornato)))}</p>
     <p class="foot" id="notif-foot"></p>`;
