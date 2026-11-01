@@ -232,38 +232,24 @@ async function viewHome() {
   const weekend = !!pv;
   let lastGP = "";
   if (last && !weekend) {
+    // risultati dei giocatori nell'ultimo GP, come nella pagina GP, in un box blu
     const R = await getRound(last);
-    const top = R.giocatori.slice(0, 3);
-    const order = [top[1], top[0], top[2]];
-    const cls = ["s2", "s1", "s3"];
+    const io = me();
     lastGP = `
-      <div class="section-title"><span>Ultimo GP · ${esc(R.gp)}</span><a href="#/gp/${last}">Dettagli →</a></div>
-      ${R.gara_annullata ? `<div class="alert info">🌧️ <b>Gara annullata.</b> ${ANNULLATA}</div>` : ""}
-      <div class="card">
-        <div class="podium">
-          ${order.map((g, i) => g ? `<div class="step ${cls[i]}"><div class="who">${esc(g.nome)}</div>
-            <div class="val num">${fmt(g.tot)} pt</div><div class="block">${g.pos}</div></div>` : "<div></div>").join("")}
-        </div>
-      </div>
-      <div class="section-title"><span>Top piloti del weekend</span><a href="#/gp/${last}/piloti">Tutti →</a></div>
-      <div class="card"><div class="list">
-        ${R.piloti.slice(0, 3).map((p) => `
-          <a class="row" href="#/gp/${last}/piloti">
-            ${medal(p.pos)} ${racenum(p.numero)}
-            <div class="grow"><div class="name">${esc(p.nome)}</div>
-              <div class="meta">${teamChip(p.team)} ${p.owner ? ownerChip(p.owner) : ""}</div></div>
-            <div class="right pts big num">${fmt(p.tot)}</div>
-          </a>`).join("")}
-      </div></div>`;
+      <section class="provv solo">
+        <div class="provv-head"><span>Ultimo GP · R${last} ${esc(R.gp)}</span><a href="#/gp/${last}">Dettagli →</a></div>
+        ${R.gara_annullata ? `<div class="alert info">🌧️ <b>Gara annullata.</b> ${ANNULLATA}</div>` : ""}
+        ${R.giocatori.length ? R.giocatori.map((g) => rigaGiocatore(g, io, "x", false)).join("")
+          : `<div class="empty">Nessuna rosa compilata per questo GP</div>`}
+      </section>`;
   }
 
   view.innerHTML = `
-    ${hero}${provv}
+    ${hero}${provv}${lastGP}
     ${segnalaCard()}
     <div id="notif"></div>
     ${weekend ? "" : `<div class="section-title"><span>Classifica generale</span><a href="#/classifica">Completa →</a></div>
     <div class="card">${standingsRows(5)}</div>`}
-    ${lastGP}
     <p class="foot">Dati aggiornati al ${esc(fDateTime(new Date(S.league.aggiornato)))}</p>
     <p class="foot" id="notif-foot"></p>`;
   if (c && lineup && lineup.round === c.round) startCountdown("cd", lineup.deadline);
@@ -582,6 +568,26 @@ function teamBlock(t) {
     </div>`;
 }
 
+/* riga apribile di un giocatore in un GP (pagina GP e box "Ultimo GP" in Home) */
+function rigaGiocatore(g, io, cls, aperto) {
+  return `
+      <details class="${cls}" ${aperto ? "open" : ""}>
+        <summary class="row">
+          ${medal(g.pos)}
+          <div class="grow"><div class="name">${esc(g.nome)}${g.nome === io ? ' <span class="chip accent">tu</span>' : ""}</div>
+            <div class="meta">${g.piloti.map((p) => esc(abbr(p.nome))).join(" · ")}${g.team ? " · " + esc(g.team.nome) : ""}</div></div>
+          <div class="pts big num">${fmt(g.tot)}</div>${CHEV}
+        </summary>
+        <div class="xbody">
+          ${g.stato_rosa && String(g.stato_rosa).toUpperCase() !== "OK" ? `<div class="alert ko">Rosa: ${esc(g.stato_rosa)}</div>` : ""}
+          ${g.piloti.map((p) => riderBlock(p, p.pt)).join("")}
+          ${teamBlock(g.team)}
+          ${g.riserva_panchina ? `<div class="note-line">🪑 Riserva <b>${esc(g.riserva_panchina.nome)}</b> non entrata
+            ${g.riserva_panchina.assente ? "(assente)" : `(avrebbe fatto ${fmt(g.riserva_panchina.avrebbe)} pt)`}</div>` : ""}
+        </div>
+      </details>`;
+}
+
 async function viewGP(nArg, tabArg) {
   setTab("gp");
   const giocati = S.standings.giocati;
@@ -603,22 +609,9 @@ async function viewGP(nArg, tabArg) {
 
   let body = "";
   if (tab === "giocatori") {
-    body = R.giocatori.length ? R.giocatori.map((g) => `
-      <details class="x card" ${g.nome === io || R.giocatori.length <= 3 && g.pos === 1 ? "open" : ""}>
-        <summary class="row">
-          ${medal(g.pos)}
-          <div class="grow"><div class="name">${esc(g.nome)}${g.nome === io ? ' <span class="chip accent">tu</span>' : ""}</div>
-            <div class="meta">${g.piloti.map((p) => esc(abbr(p.nome))).join(" · ")}${g.team ? " · " + esc(g.team.nome) : ""}</div></div>
-          <div class="pts big num">${fmt(g.tot)}</div>${CHEV}
-        </summary>
-        <div class="xbody">
-          ${g.stato_rosa && String(g.stato_rosa).toUpperCase() !== "OK" ? `<div class="alert ko">Rosa: ${esc(g.stato_rosa)}</div>` : ""}
-          ${g.piloti.map((p) => riderBlock(p, p.pt)).join("")}
-          ${teamBlock(g.team)}
-          ${g.riserva_panchina ? `<div class="note-line">🪑 Riserva <b>${esc(g.riserva_panchina.nome)}</b> non entrata
-            ${g.riserva_panchina.assente ? "(assente)" : `(avrebbe fatto ${fmt(g.riserva_panchina.avrebbe)} pt)`}</div>` : ""}
-        </div>
-      </details>`).join("") : `<div class="card empty">Nessuna rosa compilata per questo GP</div>`;
+    body = R.giocatori.length ? R.giocatori.map((g) =>
+      rigaGiocatore(g, io, "x card", g.nome === io || R.giocatori.length <= 3 && g.pos === 1)).join("")
+      : `<div class="card empty">Nessuna rosa compilata per questo GP</div>`;
   } else if (tab === "piloti") {
     body = `<div class="card">` + R.piloti.map((p) => `
       <details class="x">
