@@ -44,15 +44,53 @@ const playerColor = (nome) => {
   return PLAYER_COLORS[(i < 0 ? 0 : i) % PLAYER_COLORS.length];
 };
 const riderInfo = (nome) => (S.league?.piloti || []).find((p) => p.nome === nome) || {};
-const me = () => {
+/* accesso: fm_auth = {id, pin}, dove "pin" e' il gettone di sessione "t:..." dato da
+   accedi() (con lo schema vecchio, il PIN). "Ricordami" -> localStorage, altrimenti
+   sessionStorage (sparisce chiudendo l'app). */
+const authGet = () => {
   const a = lsGet("fm_auth");
+  if (a) return a;
+  try { return JSON.parse(sessionStorage.getItem("fm_auth")); } catch { return null; }
+};
+const authRicordato = () => !!lsGet("fm_auth");
+function authSet(a, ricorda = true) {
+  lsSet("fm_auth", null);
+  try { sessionStorage.removeItem("fm_auth"); } catch {}
+  if (!a) {
+    S.profili = null;
+    lsSet("fm_profili", null);
+    iconaProfilo();
+    return;
+  }
+  if (ricorda) lsSet("fm_auth", a);
+  else try { sessionStorage.setItem("fm_auth", JSON.stringify(a)); } catch {}
+}
+const me = () => {
+  const a = authGet();
   return a ? (S.league.giocatori.find((g) => g.id === a.id) || {}).nome : null;
+};
+/* nickname e foto (tabella profili): solo per chi ha fatto l'accesso, altrimenti
+   si vedono i nomi dell'Excel. I dati restano agganciati al nome vero. */
+const profiloDi = (nome) => {
+  if (!S.profili) return null;
+  const g = (S.league?.giocatori || []).find((x) => x.nome === nome);
+  return g ? S.profili[g.id] || null : null;
+};
+const nick = (nome) => profiloDi(nome)?.nickname || nome;
+const mini = (nome) => {
+  const f = profiloDi(nome)?.foto;
+  return f ? `<img class="pfp" src="${esc(f)}" alt="">` : "";
+};
+const avatarHTML = (nome, stile = "") => {
+  const f = profiloDi(nome)?.foto;
+  return f ? `<img class="avatar" src="${esc(f)}" alt="" style="${stile}">`
+           : `<div class="avatar" style="background:${playerColor(nome)};${stile}">${esc(nick(nome)[0])}</div>`;
 };
 
 const medal = (pos, extra = "") => `<span class="medal ${pos <= 3 ? "p" + pos : ""} ${extra}">${pos}</span>`;
 const teamChip = (t) => t ? `<span class="chip"><span class="team-dot" style="background:${teamColor(t)}"></span>${esc(t)}</span>` : "";
 const ownerChip = (o) => o
-  ? `<span class="chip" style="color:${playerColor(o)}">● ${esc(o)}</span>`
+  ? `<span class="chip" style="color:${playerColor(o)}">● ${esc(nick(o))}</span>`
   : `<span class="chip">libero</span>`;
 const racenum = (n) => n != null ? `<span class="racenum">${esc(n)}</span>` : "";
 const CHEV = `<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>`;
@@ -152,9 +190,9 @@ function standingsRows(limit) {
   if (!rows.length) return `<div class="empty">Ancora nessun GP disputato</div>`;
   return `<div class="list">` + rows.map((r) => `
     <a class="row" href="#/squadre/${encodeURIComponent(r.nome)}" ${r.nome === io ? 'style="background:var(--accent-soft)"' : ""}>
-      ${medal(r.pos)}
+      ${medal(r.pos)}${mini(r.nome)}
       <div class="grow">
-        <div class="name">${esc(r.nome)}${r.nome === io ? ' <span class="chip accent">tu</span>' : ""}</div>
+        <div class="name">${esc(nick(r.nome))}${r.nome === io ? ' <span class="chip accent">tu</span>' : ""}</div>
         <div class="meta">${moveHTML(r.pos, r.pos_prec)} ultimo GP ${fmt(r.ultimo_gp)} pt</div>
       </div>
       <div class="right">
@@ -211,8 +249,8 @@ async function viewHome() {
         ${P.giocatori.length ? P.giocatori.map((g) => `
           <details class="x">
             <summary class="row">
-              ${medal(g.pos)}
-              <div class="grow"><div class="name">${esc(g.nome)}${g.nome === io ? ' <span class="chip accent">tu</span>' : ""}</div>
+              ${medal(g.pos)}${mini(g.nome)}
+              <div class="grow"><div class="name">${esc(nick(g.nome))}${g.nome === io ? ' <span class="chip accent">tu</span>' : ""}</div>
                 <div class="meta">${g.piloti.map((p) => esc(abbr(p.nome))).join(" · ")}</div></div>
               <div class="pts big num ${sign(g.tot)}">${fmt(g.tot)}</div>${CHEV}
             </summary>
@@ -411,7 +449,7 @@ function recordHTML(serie, giocati) {
     if (!ult || s.punti[last - 1] > ult.v) ult = { v: s.punti[last - 1], nome: s.nome };
   }
   const cella = (tit, r, sotto) => `<div class="stat"><small>${tit}</small><b class="num">${r ? fmt(r.v) : "–"}</b>
-    <span>${r ? esc(r.nome) : ""}</span>${sotto ? `<span class="small">${esc(sotto)}</span>` : ""}</div>`;
+    <span>${r ? esc(nick(r.nome)) : ""}</span>${sotto ? `<span class="small">${esc(sotto)}</span>` : ""}</div>`;
   return `<div class="stats">
     ${cella("Miglior GP", best, best ? `R${best.n} ${R(best.n).gp}` : "")}
     ${cella("Media più alta", avg, avg && avg.k < giocati.length ? `su ${avg.k} GP` : "")}
@@ -438,7 +476,7 @@ function viewClassifica(tabArg) {
     <div class="section-title"><span>Punti GP per GP</span></div>
     <div class="card table-wrap"><table class="grid">
       <thead><tr><th>${etichetta}</th>${giocati.map((n) => `<th title="${esc(R(n).gp)}">R${n}<br><span style="text-transform:none">${esc(R(n).gp.slice(0, 3))}</span></th>`).join("")}<th>Tot</th></tr></thead>
-      <tbody>${serie.map((s) => `<tr><td><b>${esc(tab === "piloti" ? abbr(s.nome) : s.nome)}</b></td>${giocati.map((n) => {
+      <tbody>${serie.map((s) => `<tr><td><b>${esc(tab === "piloti" ? abbr(s.nome) : nick(s.nome))}</b></td>${giocati.map((n) => {
           const v = s.punti[n - 1];
           const top = Math.max(...serie.map((x) => x.punti[n - 1]));
           return `<td class="num ${v === top && v ? "best" : ""}">${fmt(v)}</td>`;
@@ -475,7 +513,7 @@ function viewClassifica(tabArg) {
     const datasets = serie.filter((s) => SEL[tab].has(s.nome)).map((s) => {
       let acc = 0;
       const dati = giocati.map((n) => mode === "cum" ? (acc += s.punti[n - 1]) : s.punti[n - 1]);
-      return { label: tab === "piloti" ? abbr(s.nome) : s.nome, data: mode === "cum" ? [0, ...dati] : dati,
+      return { label: tab === "piloti" ? abbr(s.nome) : nick(s.nome), data: mode === "cum" ? [0, ...dati] : dati,
                borderColor: s.color, backgroundColor: s.color,
                tension: .3, borderWidth: 3, pointRadius: giocati.length > 12 ? 2 : 4, pointHoverRadius: 6, borderRadius: 4 };
     });
@@ -573,8 +611,8 @@ function rigaGiocatore(g, io, cls, aperto) {
   return `
       <details class="${cls}" ${aperto ? "open" : ""}>
         <summary class="row">
-          ${medal(g.pos)}
-          <div class="grow"><div class="name">${esc(g.nome)}${g.nome === io ? ' <span class="chip accent">tu</span>' : ""}</div>
+          ${medal(g.pos)}${mini(g.nome)}
+          <div class="grow"><div class="name">${esc(nick(g.nome))}${g.nome === io ? ' <span class="chip accent">tu</span>' : ""}</div>
             <div class="meta">${g.piloti.map((p) => esc(abbr(p.nome))).join(" · ")}${g.team ? " · " + esc(g.team.nome) : ""}</div></div>
           <div class="pts big num">${fmt(g.tot)}</div>${CHEV}
         </summary>
@@ -691,9 +729,9 @@ function viewSquadre(arg) {
       return `
       <div class="card" id="sq-${esc(a.nome)}">
         <div class="team-card-head">
-          <div class="avatar" style="background:${col}">${esc(a.nome[0])}</div>
+          ${avatarHTML(a.nome)}
           <div class="grow" style="flex:1;min-width:0">
-            <div class="name" style="font-weight:900;font-size:19px">${esc(a.nome)}</div>
+            <div class="name" style="font-weight:900;font-size:19px">${esc(nick(a.nome))}</div>
             <div class="meta muted small">${tot[a.nome] ? `${tot[a.nome].pos}° in classifica` : ""} · asta ${fmt(a.speso)} crediti${a.stato && a.stato !== "OK"
               ? ` <span class="chip ko">⚠ ${esc(a.stato === "SFORATO" ? "Sforato" : a.stato.charAt(0) + a.stato.slice(1).toLowerCase())}</span>` : ""}</div>
           </div>
@@ -762,8 +800,8 @@ function statusList(st, rnd, conPiloti) {
   return `<div class="list">` + S.league.giocatori.map((g) => {
     const x = inviate[g.id];
     return `<div class="row">
-      <div class="avatar" style="background:${playerColor(g.nome)};width:34px;height:34px;font-size:15px;border-radius:10px">${esc(g.nome[0])}</div>
-      <div class="grow"><div class="name">${esc(g.nome)}</div>
+      ${avatarHTML(g.nome, "width:34px;height:34px;font-size:15px;border-radius:10px")}
+      <div class="grow"><div class="name">${esc(nick(g.nome))}</div>
         <div class="meta">${x ? (conPiloti && x.tit1
           ? `${esc(abbr(x.tit1))} · ${esc(abbr(x.tit2))} · 🪑 ${esc(abbr(x.riserva))}`
           : "inviata " + esc(fDateTime(new Date(x.submitted_at)))) : "non ancora inviata"}</div></div>
@@ -786,7 +824,7 @@ async function viewFormazione() {
   const now = new Date();
   // GP con formazioni chiuse ma risultati non ancora pubblicati
   const inCorso = S.league.calendario.filter((c) => !c.importato && c.deadline && new Date(c.deadline) <= now).pop();
-  const auth = lsGet("fm_auth");
+  const auth = authGet();
   const player = auth && S.league.giocatori.find((g) => g.id === auth.id);
   // asta: il form c'e' solo quando l'admin la apre (asta.py apri); se il database
   // non ha ancora le funzioni dell'asta, vale come chiusa
@@ -809,7 +847,7 @@ async function viewFormazione() {
     <h1 class="page-title">${TITOLO_FORM}</h1>
     ${asta ? `<p class="page-sub"><b>Asta aperta</b> · dichiara piloti e team presi e i crediti spesi</p>` : ""}
     ${lineup ? `<p class="page-sub"${asta ? ` style="margin-top:-12px"` : ""}>Round ${lineup.round} · <b>GP ${esc(lineup.gp)}</b> · chiude ${esc(fDateTime(new Date(lineup.deadline)))}</p>` : ""}
-    ${player && (lineup || asta) ? `<p class="page-sub" style="margin-top:-12px">Ciao <b>${esc(player.nome)}</b> · <button class="linkbtn" id="logout">Esci</button></p>` : ""}
+    ${player && (lineup || asta) ? `<p class="page-sub" style="margin-top:-12px">Ciao <b>${esc(nick(player.nome))}</b> · <a class="linkbtn" href="#/profilo">Profilo</a> · <button class="linkbtn" id="logout">Esci</button></p>` : ""}
     ${main}
     ${segnalaCard()}
     ${asta ? `<div class="section-title"><span>Rose d'asta inviate</span></div>
@@ -819,7 +857,7 @@ async function viewFormazione() {
     ${inCorso ? `<div class="section-title"><span>Formazioni GP ${esc(inCorso.gp)}</span></div>
       <div class="card" id="status-now"><div class="empty">…</div></div>` : ""}`;
 
-  document.getElementById("logout")?.addEventListener("click", () => { lsSet("fm_auth", null); viewFormazione(); });
+  document.getElementById("logout")?.addEventListener("click", async () => { await esci(); viewFormazione(); });
   contaSegnalazioni();
 
   if (lineup) rpc("lineup_status", { p_round: lineup.round })
@@ -839,7 +877,8 @@ async function viewFormazione() {
   if (lineup) editorFormazione(player, auth.pin, lineup);
 }
 
-/* accesso con PIN (formazione, asta, segnalazioni): resta salvato in fm_auth */
+/* accesso con password (formazione, asta, segnalazioni, profilo): nel telefono
+   resta solo il gettone di sessione di accedi(), in fm_auth */
 function loginHTML() {
   return `
       <div class="card pad">
@@ -847,13 +886,52 @@ function loginHTML() {
           <div class="players-pick" id="who">${S.league.giocatori.map((g) =>
             `<button type="button" data-id="${esc(g.id)}">${esc(g.nome)}</button>`).join("")}</div></div>
         <form id="login">
-          <div class="field"><label for="pin">PIN</label>
-            <input class="input" id="pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Il tuo PIN" required></div>
+          <div class="field"><label for="pin">Password</label>
+            <input class="input" id="pin" type="password" autocomplete="current-password" placeholder="La tua password" required></div>
+          <label class="check"><input type="checkbox" id="ricordami" checked> Ricordami su questo dispositivo</label>
           <div id="login-msg"></div>
           <button class="btn block" type="submit" disabled id="login-btn">Entra</button>
         </form>
-        <p class="muted small center" style="margin:12px 0 0">Il PIN te lo dà l'admin della lega. Resta salvato su questo dispositivo.</p>
+        <p class="muted small center" style="margin:12px 0 0">La prima password è il PIN che ti ha dato l'admin: poi la cambi dal profilo.</p>
       </div>`;
+}
+
+const rpcMancante = (e) => /\((404|400)\)/.test(e.message);   // schema.sql senza il profilo
+
+async function esci() {
+  const a = authGet();
+  if (a?.pin?.startsWith("t:")) await rpc("esci", { p_token: a.pin }).catch(() => {});
+  authSet(null);
+}
+
+// nickname e foto di tutti (solo con un accesso valido); copia nel telefono per l'avvio
+async function caricaProfili() {
+  const a = authGet();
+  if (!a || !sbOK()) return false;
+  try {
+    const r = await rpc("profili_lega", { p_player: a.id, p_pin: a.pin });
+    if (!r.ok) {
+      if (/scadut/i.test(r.errore || "")) authSet(null);   // gettone scaduto o password cambiata altrove
+      return false;
+    }
+    const nuovi = Object.fromEntries(r.profili.map((p) => [p.player_id, p]));
+    const cambiati = JSON.stringify(nuovi) !== JSON.stringify(S.profili || {});
+    S.profili = nuovi;
+    lsSet("fm_profili", nuovi);
+    iconaProfilo();
+    return cambiati;
+  } catch { return false; }
+}
+
+// icona in alto a destra: la propria foto quando si e' collegati
+function iconaProfilo() {
+  const b = document.getElementById("profilo-btn");
+  if (!b) return;
+  const io = me();
+  const f = io && profiloDi(io)?.foto;
+  b.classList.toggle("foto", !!f);
+  b.innerHTML = f ? `<img src="${esc(f)}" alt="">`
+    : `<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>`;
 }
 
 function attivaLogin(verifica, dopo) {
@@ -869,13 +947,25 @@ function attivaLogin(verifica, dopo) {
   });
   document.getElementById("login").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const pin = document.getElementById("pin").value.trim();
+    const pwd = document.getElementById("pin").value;
+    const ricorda = document.getElementById("ricordami").checked;
     const msg = document.getElementById("login-msg");
     btn.disabled = true;
     try {
-      const r = await verifica(chosen, pin);
-      if (!r.ok) throw new Error(r.errore);
-      lsSet("fm_auth", { id: chosen, pin });
+      let auth;
+      try {
+        const r = await rpc("accedi", { p_player: chosen, p_password: pwd, p_ricordami: ricorda });
+        if (!r.ok) throw new Error(r.errore);
+        auth = { id: chosen, pin: r.token };
+      } catch (err) {
+        if (!rpcMancante(err)) throw err;
+        // database senza il profilo: accesso come prima, col PIN
+        const r = await verifica(chosen, pwd.trim());
+        if (!r.ok) throw new Error(r.errore);
+        auth = { id: chosen, pin: pwd.trim() };
+      }
+      authSet(auth, ricorda);
+      await caricaProfili();
       dopo();
     } catch (err) {
       msg.innerHTML = `<div class="alert ko">${esc(err.message)}</div>`;
@@ -895,8 +985,8 @@ function listaAsta(st) {
     const speso = x ? x.piloti.reduce((s, p) => s + (+p.prezzo || 0), 0) + (+x.prezzo_team || 0) : 0;
     const sfora = x && budget != null && speso > budget;
     return `<div class="row">
-      <div class="avatar" style="background:${playerColor(g.nome)};width:34px;height:34px;font-size:15px;border-radius:10px">${esc(g.nome[0])}</div>
-      <div class="grow"><div class="name">${esc(g.nome)}</div>
+      ${avatarHTML(g.nome, "width:34px;height:34px;font-size:15px;border-radius:10px")}
+      <div class="grow"><div class="name">${esc(nick(g.nome))}</div>
         <div class="meta">${x ? voci.join(" · ") : "non ancora inviata"}</div></div>
       ${x ? `<div class="right"><div class="pts num ${sfora ? "minus" : ""}">${fmt(speso)}</div><div class="gap">${sfora ? "⚠ sforato" : "crediti"}</div></div>`
           : `<span class="chip ko">—</span>`}
@@ -910,7 +1000,7 @@ async function editorAsta(player, pin, asta) {
   try {
     const r = await rpc("my_asta", { p_player: player.id, p_pin: pin });
     if (!r.ok) {
-      lsSet("fm_auth", null);
+      authSet(null);
       box.innerHTML = `<div class="alert ko">${esc(r.errore)}</div><button class="btn ghost block" onclick="location.reload()">Accedi di nuovo</button>`;
       return;
     }
@@ -949,7 +1039,7 @@ async function editorAsta(player, pin, asta) {
         ${lista.map((n) => {
           const chi = presi[n];
           return `<option value="${esc(n)}" ${n === x.nome ? "selected" : ""} ${chi || altri.has(n) ? "disabled" : ""}>${esc(n)}${
-            chi ? ` · preso da ${esc(chi)}` : ""}</option>`;
+            chi ? ` · preso da ${esc(nick(chi))}` : ""}</option>`;
         }).join("")}
       </select>
       <input class="input cr num" data-i="${i}" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="5"
@@ -1023,7 +1113,7 @@ async function editorFormazione(player, pin, lineup) {
   try {
     const r = await rpc("my_lineup", { p_player: player.id, p_pin: pin, p_round: lineup.round });
     if (!r.ok) {
-      lsSet("fm_auth", null);
+      authSet(null);
       box.innerHTML = `<div class="alert ko">${esc(r.errore)}</div><button class="btn ghost block" onclick="location.reload()">Accedi di nuovo</button>`;
       return;
     }
@@ -1159,17 +1249,17 @@ async function viewSegnala() {
                : "Le segnalazioni dall'app non sono ancora attive."}</div></div>`;
     return;
   }
-  const auth = lsGet("fm_auth");
+  const auth = authGet();
   const player = auth && S.league.giocatori.find((g) => g.id === auth.id);
   view.innerHTML = `${titolo}
     <p class="page-sub">Round ${c.round} · <b>GP ${esc(c.gp)}</b> · eventi che i PDF ufficiali non riportano</p>
-    ${player ? `<p class="page-sub" style="margin-top:-12px">Ciao <b>${esc(player.nome)}</b> · <button class="linkbtn" id="logout">Esci</button></p>` : ""}
+    ${player ? `<p class="page-sub" style="margin-top:-12px">Ciao <b>${esc(nick(player.nome))}</b> · <button class="linkbtn" id="logout">Esci</button></p>` : ""}
     ${player ? `<div class="card pad" id="seg-form"></div>` : loginHTML()}
     <div class="alert info" style="margin-top:12px">Contano dopo il ricalcolo di fine weekend. Se più giocatori segnalano
       la stessa cosa conta <b>una volta sola</b>: se succede di nuovo, usa <b>+1</b>.</div>
     <div class="section-title"><span>Segnalato finora</span></div>
     <div class="card" id="seg-list"><div class="loading" style="padding:30px 0"><div class="spinner"></div></div></div>`;
-  document.getElementById("logout")?.addEventListener("click", () => { lsSet("fm_auth", null); viewSegnala(); });
+  document.getElementById("logout")?.addEventListener("click", async () => { await esci(); viewSegnala(); });
   if (!player) {
     attivaLogin((id, pin) => rpc("my_lineup", { p_player: id, p_pin: pin, p_round: c.round }), viewSegnala);
   }
@@ -1202,7 +1292,7 @@ async function viewSegnala() {
         <div class="grow"><div class="name">${esc(e.pilota)}</div>
           <div class="meta">${esc(etichettaEvento(e.campo))}${e.n > 1 ? ` <b>×${e.n}</b>` : ""}${
             pt != null ? ` · <span class="${sign(pt)}">${fmtS(pt * e.n)} pt</span>` : ""}</div>
-          <div class="meta muted small">${e.chi.map((x) => esc(x.nome) + (x.n > 1 ? " ×" + x.n : "")).join(", ")}</div></div>
+          <div class="meta muted small">${e.chi.map((x) => esc(nick(x.nome)) + (x.n > 1 ? " ×" + x.n : "")).join(", ")}</div></div>
         ${player ? `<div class="seg-act">
           ${io ? "" : `<button class="btn sm ghost" data-p="${esc(e.pilota)}" data-k="${esc(e.campo)}" data-n="${e.n}">Confermo</button>`}
           ${e.n < 9 ? `<button class="btn sm" data-p="${esc(e.pilota)}" data-k="${esc(e.campo)}" data-n="${e.n + 1}" title="È successo un'altra volta">+1</button>` : ""}
@@ -1320,6 +1410,152 @@ function viewRegolamento() {
         </div>`).join("")}</div>`).join("")}`;
 }
 
+/* ============================================================= PROFILO */
+// foto scelta dal telefono -> quadrato 256x256 in JPEG (tagliato al centro)
+function fotoQuadrata(file) {
+  return new Promise((ok, ko) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const lato = Math.min(img.naturalWidth, img.naturalHeight);
+      const c = document.createElement("canvas");
+      c.width = c.height = 256;
+      c.getContext("2d").drawImage(img, (img.naturalWidth - lato) / 2, (img.naturalHeight - lato) / 2,
+        lato, lato, 0, 0, 256, 256);
+      URL.revokeObjectURL(url);
+      let q = 0.85, dati = c.toDataURL("image/jpeg", q);
+      while (dati.length > 110000 && q > 0.4) dati = c.toDataURL("image/jpeg", (q -= 0.15));
+      ok(dati);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); ko(new Error("Immagine non leggibile")); };
+    img.src = url;
+  });
+}
+
+async function viewProfilo() {
+  setTab("profilo");
+  const titolo = `<h1 class="page-title">Profilo</h1>`;
+  if (!sbOK()) {
+    view.innerHTML = `${titolo}<div class="card pad"><div class="alert info">L'accesso dall'app non è ancora attivo.</div></div>`;
+    return;
+  }
+  const auth = authGet();
+  const player = auth && S.league.giocatori.find((g) => g.id === auth.id);
+  if (!player) {
+    view.innerHTML = `${titolo}<p class="page-sub">Entra per schierare, segnalare e personalizzare il tuo profilo</p>${loginHTML()}`;
+    attivaLogin((id, pin) => rpc("my_asta", { p_player: id, p_pin: pin }), viewProfilo);
+    return;
+  }
+  await caricaProfili();
+  const prof = S.profili?.[player.id] || {};
+  let foto = prof.foto || null;
+  const pos = S.standings.tabella.find((r) => r.nome === player.nome);
+  const conGettone = auth.pin.startsWith("t:");
+
+  view.innerHTML = `${titolo}
+    <div class="card pad profilo">
+      <div class="profilo-head">
+        <button type="button" class="profilo-foto" id="foto-btn" aria-label="Cambia foto"></button>
+        <div class="grow">
+          <div class="name" id="nick-vis"></div>
+          <div class="meta muted small">${esc(player.nome)}${pos ? ` · ${pos.pos}° in classifica · ${fmt(pos.tot)} pt` : ""}</div>
+          <div class="profilo-azioni"><button type="button" class="linkbtn" id="foto-cambia">Cambia foto</button>
+            <button type="button" class="linkbtn" id="foto-togli">Togli foto</button></div>
+        </div>
+      </div>
+      <input type="file" id="foto-file" accept="image/*" hidden>
+      <form id="prof-form">
+        <div class="field"><label for="nick">Nickname</label>
+          <input class="input" id="nick" maxlength="20" placeholder="${esc(player.nome)}" value="${esc(prof.nickname || "")}"></div>
+        <p class="muted small" style="margin:-4px 0 12px">Nickname e foto li vedono solo i giocatori che hanno fatto l'accesso. Nell'Excel resti <b>${esc(player.nome)}</b>.</p>
+        <div id="prof-msg"></div>
+        <button class="btn block" type="submit" ${conGettone ? "" : "disabled"}>Salva profilo</button>
+      </form>
+    </div>
+    <div class="section-title"><span>Cambia password</span></div>
+    <div class="card pad">
+      <form id="pwd-form">
+        <div class="field"><label for="pwd-old">Password attuale</label>
+          <input class="input" id="pwd-old" type="password" autocomplete="current-password" required></div>
+        <div class="field"><label for="pwd-new">Nuova password</label>
+          <input class="input" id="pwd-new" type="password" autocomplete="new-password" minlength="6" maxlength="64" required placeholder="Almeno 6 caratteri"></div>
+        <div class="field"><label for="pwd-new2">Ripeti la nuova password</label>
+          <input class="input" id="pwd-new2" type="password" autocomplete="new-password" minlength="6" maxlength="64" required></div>
+        <div id="pwd-msg"></div>
+        <button class="btn ghost block" type="submit" ${conGettone ? "" : "disabled"}>Cambia password</button>
+      </form>
+    </div>
+    ${conGettone ? "" : `<div class="alert info" style="margin-top:12px">Profilo e password si attivano quando l'admin aggiorna il database.</div>`}
+    <button class="btn ghost block" id="logout" style="margin-top:16px">Esci</button>
+    <p class="muted small center" style="margin:10px 0 0">${authRicordato() ? "Accesso ricordato su questo dispositivo." : "L'accesso finisce quando chiudi l'app."}</p>`;
+
+  const disegna = () => {
+    const nickVal = document.getElementById("nick").value.trim();
+    document.getElementById("nick-vis").textContent = nickVal || player.nome;
+    document.getElementById("foto-btn").innerHTML = foto ? `<img src="${esc(foto)}" alt="">`
+      : `<span style="background:${playerColor(player.nome)}">${esc((nickVal || player.nome)[0])}</span>`;
+    document.getElementById("foto-togli").hidden = !foto;
+  };
+  disegna();
+  const file = document.getElementById("foto-file");
+  const scegli = () => conGettone && file.click();
+  document.getElementById("foto-btn").addEventListener("click", scegli);
+  document.getElementById("foto-cambia").addEventListener("click", scegli);
+  document.getElementById("foto-togli").addEventListener("click", () => { foto = null; disegna(); });
+  document.getElementById("nick").addEventListener("input", disegna);
+  file.addEventListener("change", async () => {
+    const msg = document.getElementById("prof-msg");
+    if (!file.files[0]) return;
+    try { foto = await fotoQuadrata(file.files[0]); msg.innerHTML = `<div class="alert info">Foto pronta: tocca <b>Salva profilo</b>.</div>`; }
+    catch (e) { msg.innerHTML = `<div class="alert ko">${esc(e.message)}</div>`; }
+    file.value = "";
+    disegna();
+  });
+
+  document.getElementById("prof-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById("prof-msg");
+    const btn = e.target.querySelector("button[type=submit]");
+    btn.disabled = true;
+    try {
+      const r = await rpc("salva_profilo", { p_player: player.id, p_pin: auth.pin,
+        p_nickname: document.getElementById("nick").value.trim(), p_foto: foto });
+      if (!r.ok) throw new Error(r.errore);
+      await caricaProfili();
+      msg.innerHTML = `<div class="alert ok">✓ Profilo salvato.</div>`;
+    } catch (err) {
+      msg.innerHTML = `<div class="alert ko">${esc(err.message)}</div>`;
+    }
+    btn.disabled = false;
+  });
+
+  document.getElementById("pwd-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById("pwd-msg");
+    const nuova = document.getElementById("pwd-new").value;
+    if (nuova !== document.getElementById("pwd-new2").value) {
+      msg.innerHTML = `<div class="alert ko">Le due password nuove non coincidono.</div>`;
+      return;
+    }
+    const btn = e.target.querySelector("button[type=submit]");
+    btn.disabled = true;
+    try {
+      const ricorda = authRicordato();
+      const r = await rpc("cambia_password", { p_player: player.id, p_attuale: document.getElementById("pwd-old").value,
+        p_nuova: nuova, p_ricordami: ricorda });
+      if (!r.ok) throw new Error(r.errore);
+      authSet({ id: player.id, pin: r.token }, ricorda);
+      e.target.reset();
+      msg.innerHTML = `<div class="alert ok">✓ Password cambiata. Gli altri dispositivi dovranno rifare l'accesso.</div>`;
+    } catch (err) {
+      msg.innerHTML = `<div class="alert ko">${esc(err.message)}</div>`;
+    }
+    btn.disabled = false;
+  });
+
+  document.getElementById("logout").addEventListener("click", async () => { await esci(); viewProfilo(); });
+}
+
 /* ============================================================== router */
 async function route() {
   clearInterval(S.timer);
@@ -1334,6 +1570,7 @@ async function route() {
       case "segnala": await viewSegnala(); break;
       case "calendario": viewCalendario(); break;
       case "regolamento": viewRegolamento(); break;
+      case "profilo": await viewProfilo(); break;
       default: await viewHome();
     }
   } catch (e) {
@@ -1371,6 +1608,22 @@ function hideSplash() {
   }, Math.max(0, SPLASH_MIN_MS - (Date.now() - splashStart)));
 }
 
+// all'avvio: chi ha ancora il PIN salvato (versione vecchia dell'app) passa a un
+// gettone di sessione senza rifare l'accesso; poi nickname e foto aggiornati
+async function avvioAccesso() {
+  const a = authGet();
+  if (!a || !sbOK()) return;
+  if (!a.pin.startsWith("t:")) {
+    try {
+      const r = await rpc("accedi", { p_player: a.id, p_password: a.pin, p_ricordami: authRicordato() });
+      if (r.ok) authSet({ id: a.id, pin: r.token }, authRicordato());
+    } catch { return; }                      // database senza il profilo: resta il PIN
+  }
+  // nickname o foto cambiati da un altro telefono: ridisegno la pagina (non durante
+  // la compilazione di un form)
+  if (await caricaProfili() && !/^#\/(formazione|segnala|profilo)/.test(location.hash)) route();
+}
+
 (async function init() {
   try {
     [S.league, S.standings, S.season, S.config] = await Promise.all([
@@ -1382,8 +1635,11 @@ function hideSplash() {
     return;
   }
   window.addEventListener("hashchange", route);
+  if (authGet()) S.profili = lsGet("fm_profili");
+  iconaProfilo();
   await route();
   hideSplash();
+  avvioAccesso();
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
     // a ogni apertura controlla se e' stata pubblicata una versione nuova; se il
     // service worker cambia, ricarica una volta la pagina per mostrarla subito
