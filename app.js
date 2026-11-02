@@ -165,6 +165,11 @@ function startCountdown(id, target) {
     const el = document.getElementById(id);
     if (!el) return clearInterval(S.timer);
     el.innerHTML = countdownHTML(target);
+    // allo scadere ridisegna la Home: formazioni chiuse, compaiono le segnalazioni
+    if (new Date(target) <= new Date()) {
+      clearInterval(S.timer);
+      if (/^(#\/?)?$/.test(location.hash)) setTimeout(route, 1500);
+    }
   };
   tick();
   S.timer = setInterval(tick, 1000);
@@ -1213,12 +1218,12 @@ const etichettaEvento = (k) => {
   return e ? (e.s === "Premi" ? e.l : `${e.l} · ${e.s.toLowerCase()}`) : k;
 };
 
-// GP con segnalazioni aperte: dal giorno prima della deadline a 5 giorni dopo
-// (come _segnalazioni_aperte in schema.sql)
+// GP con segnalazioni aperte: dalla deadline delle formazioni (fine countdown)
+// a 5 giorni dopo (come _segnalazioni_aperte in schema.sql)
 function roundSegnalazioni() {
   const now = Date.now();
   return S.league.calendario.find((c) => c.deadline && !c.importato &&
-    now >= new Date(c.deadline) - 864e5 && now <= +new Date(c.deadline) + 5 * 864e5) || null;
+    now >= +new Date(c.deadline) && now <= +new Date(c.deadline) + 5 * 864e5) || null;
 }
 
 function segnalaCard() {
@@ -1245,7 +1250,7 @@ async function viewSegnala() {
   const c = roundSegnalazioni();
   if (!sbOK() || !c) {
     view.innerHTML = `${titolo}<div class="card pad"><div class="alert info">
-      ${sbOK() ? "Le segnalazioni si aprono il giorno prima della deadline delle formazioni e restano aperte per tutto il weekend."
+      ${sbOK() ? "Le segnalazioni si aprono alla chiusura delle formazioni e restano aperte per tutto il weekend."
                : "Le segnalazioni dall'app non sono ancora attive."}</div></div>`;
     return;
   }
