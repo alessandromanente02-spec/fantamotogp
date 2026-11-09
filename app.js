@@ -2,7 +2,11 @@
 "use strict";
 
 const view = document.getElementById("view");
-const S = { league: null, standings: null, season: null, config: null, rounds: {}, chart: null, timer: null };
+/* S.base = cartella dei dati della lega corrente ("data/leghe/<id>/"), oppure "data/"
+   (risultati di piloti e team senza giocatori) per chi non e' in nessuna lega.
+   S.leghe = le mie leghe (le_mie_leghe), S.io = il mio account (chi_sono). */
+const S = { league: null, standings: null, season: null, config: null, rounds: {}, chart: null, timer: null,
+  base: "data/", leghe: null, io: null, profili: null, nomeId: null };
 
 /* ------------------------------------------------------------------ util */
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
@@ -28,8 +32,74 @@ async function getJSON(path) {
   return r.json();
 }
 async function getRound(n) {
-  if (!S.rounds[n]) S.rounds[n] = await getJSON(`data/rounds/${String(n).padStart(2, "0")}.json`);
+  if (!S.rounds[n]) S.rounds[n] = await getJSON(`${S.base}rounds/${String(n).padStart(2, "0")}.json`);
   return S.rounds[n];
+}
+
+/* ------------------------------------------------------------- leghe */
+// lega corrente: fm_lega nel telefono (resta tra un'apertura e l'altra)
+const legaCorrente = () => (S.leghe || []).find((l) => l.lega_id === lsGet("fm_lega")) || null;
+
+// dati della lega corrente (o quelli senza giocatori). Una lega appena creata non
+// ha ancora i suoi file (arrivano col prossimo aggiornamento dei risultati): intanto
+// valgono i dati comuni, con i membri presi da Supabase.
+async function caricaDati() {
+  let L = legaCorrente();
+  if (!L && S.leghe?.length) { lsSet("fm_lega", S.leghe[0].lega_id); L = S.leghe[0]; }
+  const file = (base) => Promise.all(["league", "standings", "season"].map((f) => getJSON(`${base}${f}.json`)));
+  let dati = null, base = "data/";
+  if (L) {
+    try { dati = await file(`data/leghe/${L.lega_id}/`); base = `data/leghe/${L.lega_id}/`; } catch { dati = null; }
+  }
+  if (!dati) dati = await file("data/");
+  [S.league, S.standings, S.season] = dati;
+  S.base = base;
+  S.rounds = {};
+  if (L) {
+    // chi e' entrato dopo l'ultimo aggiornamento compare subito
+    const ids = new Set(S.league.giocatori.map((g) => g.id));
+    S.league.giocatori = S.league.giocatori.concat(
+      L.membri.filter((m) => !ids.has(m.player_id)).map((m) => ({ id: m.player_id, nome: m.nome })));
+  }
+}
+
+async function setLega(id, dove) {
+  lsSet("fm_lega", id);
+  await caricaDati();
+  if (dove && location.hash !== dove) location.hash = dove;   // hashchange -> route()
+  else await route();
+}
+
+// le mie leghe da Supabase (+ nickname e foto dei membri). true se qualcosa e' cambiato
+async function caricaLeghe() {
+  const a = authGet();
+  if (!a || !sbOK()) return false;
+  try {
+    const r = await rpc("le_mie_leghe", { p_player: a.id, p_pin: a.pin });
+    if (!r.ok) {
+      if (/scadut|errat/i.test(r.errore || "")) { authSet(null); return true; }
+      return false;
+    }
+    const prima = JSON.stringify(S.leghe);
+    S.leghe = r.leghe;
+    lsSet("fm_leghe", r.leghe);
+    aggiornaProfili();
+    return JSON.stringify(S.leghe) !== prima;
+  } catch { return false; }
+}
+
+// nickname e foto: dai membri delle mie leghe + il mio account. Indicizzati per
+// player_id; nomeId porta dal nome (unico in tutta l'app) all'id.
+function aggiornaProfili() {
+  const p = {}, n = {};
+  for (const l of S.leghe || []) for (const m of l.membri) {
+    p[m.player_id] = { nickname: m.nickname, foto: m.foto };
+    n[m.nome] = m.player_id;
+  }
+  if (S.io) { p[S.io.player_id] = { nickname: S.io.nickname, foto: S.io.foto }; n[S.io.nome] = S.io.player_id; }
+  S.profili = p;
+  S.nomeId = n;
+  iconaProfilo();
 }
 
 const TEAM_COLORS = {
@@ -44,9 +114,9 @@ const playerColor = (nome) => {
   return PLAYER_COLORS[(i < 0 ? 0 : i) % PLAYER_COLORS.length];
 };
 const riderInfo = (nome) => (S.league?.piloti || []).find((p) => p.nome === nome) || {};
-/* accesso: fm_auth = {id, pin}, dove "pin" e' il gettone di sessione "t:..." dato da
-   accedi() (con lo schema vecchio, il PIN). "Ricordami" -> localStorage, altrimenti
-   sessionStorage (sparisce chiudendo l'app). */
+/* accesso: fm_auth = {id, pin, nome}, dove "pin" e' il gettone di sessione "t:..."
+   dato da accedi_utente()/registrati() e "nome" il nome utente. "Ricordami" ->
+   localStorage, altrimenti sessionStorage (sparisce chiudendo l'app). */
 const authGet = () => {
   const a = lsGet("fm_auth");
   if (a) return a;
@@ -57,24 +127,29 @@ function authSet(a, ricorda = true) {
   lsSet("fm_auth", null);
   try { sessionStorage.removeItem("fm_auth"); } catch {}
   if (!a) {
-    S.profili = null;
+    S.profili = S.nomeId = S.leghe = S.io = null;
     lsSet("fm_profili", null);
+    lsSet("fm_leghe", null);
     iconaProfilo();
     return;
   }
   if (ricorda) lsSet("fm_auth", a);
   else try { sessionStorage.setItem("fm_auth", JSON.stringify(a)); } catch {}
 }
-const me = () => {
+// il mio account: {id, nome} (nome = nome utente, uguale al nome nei dati delle leghe)
+const utente = () => {
   const a = authGet();
-  return a ? (S.league.giocatori.find((g) => g.id === a.id) || {}).nome : null;
+  if (!a) return null;
+  const nome = a.nome || S.io?.nome || (S.league?.giocatori || []).find((g) => g.id === a.id)?.nome;
+  return { id: a.id, nome: nome || a.id };
 };
+const me = () => utente()?.nome || null;
 /* nickname e foto (tabella profili): solo per chi ha fatto l'accesso, altrimenti
-   si vedono i nomi dell'Excel. I dati restano agganciati al nome vero. */
+   si vedono i nomi utente. I dati restano agganciati al nome vero. */
 const profiloDi = (nome) => {
   if (!S.profili) return null;
-  const g = (S.league?.giocatori || []).find((x) => x.nome === nome);
-  return g ? S.profili[g.id] || null : null;
+  const id = S.nomeId?.[nome] || (S.league?.giocatori || []).find((x) => x.nome === nome)?.id;
+  return id ? S.profili[id] || null : null;
 };
 const nick = (nome) => profiloDi(nome)?.nickname || nome;
 const mini = (nome) => {
@@ -189,10 +264,32 @@ function moveHTML(pos, prev) {
   return `<span class="move same">=</span>`;
 }
 
+// invito a entrare in una lega (chi non ha fatto l'accesso o non e' in nessuna lega)
+function invitoLega() {
+  const u = utente();
+  return `<a class="card pad seg-card" href="#/leghe">
+      <span class="seg-ico">🏆</span>
+      <div class="grow"><div class="name">${u ? "Entra in una lega" : "Gioca con i tuoi amici"}</div>
+        <div class="meta muted small">${u ? "Crea la tua lega o entra in quella di un amico con il codice invito"
+          : "Accedi o registrati, poi crea una lega o entra con un codice invito"}</div></div>
+      <span class="chip accent">${u ? "Leghe →" : "Entra →"}</span></a>`;
+}
+
+// nome della lega in cima alle pagine della lega (tocca per cambiarla)
+function legaBar() {
+  const L = legaCorrente();
+  if (!L) return "";
+  const altre = (S.leghe || []).length > 1;
+  return `<a class="lega-bar" href="#/leghe"><span>🏆</span><b>${esc(L.nome)}</b>
+    <small>${altre ? "cambia lega →" : "la tua lega →"}</small></a>`;
+}
+
 function standingsRows(limit) {
   const io = me();
   const rows = S.standings.tabella.slice(0, limit || 99);
-  if (!rows.length) return `<div class="empty">Ancora nessun GP disputato</div>`;
+  if (!legaCorrente()) return `<div class="empty">La classifica dei giocatori è quella della tua lega: <a href="#/leghe">entra in una lega →</a></div>`;
+  if (!rows.length || !(S.standings.giocati_lega || S.standings.giocati).length)
+    return `<div class="empty">La classifica parte dal primo GP schierato dalla lega</div>`;
   return `<div class="list">` + rows.map((r) => `
     <a class="row" href="#/squadre/${encodeURIComponent(r.nome)}" ${r.nome === io ? 'style="background:var(--accent-soft)"' : ""}>
       ${medal(r.pos)}${mini(r.nome)}
@@ -239,7 +336,7 @@ async function viewHome() {
   const pv = S.league.provvisorio;
   if (pv && c && pv.round === c.round) {
     try {
-      const P = await getJSON("data/provvisorio.json");
+      const P = await getJSON(S.base + "provvisorio.json");
       const io = me();
       const FASI_PROVV = {
         prove: ["dopo le prove del venerdì", "Qualifiche, Sprint e gara completano il punteggio."],
@@ -263,7 +360,10 @@ async function viewHome() {
               ${g.piloti.map((p) => riderBlock(p, p.pt)).join("")}
               ${g.team && (g.team.voci.length || g.team.pt) ? teamBlock(g.team) : ""}
             </div>
-          </details>`).join("") : `<div class="empty">Nessuna formazione per questo GP</div>`}
+          </details>`).join("") : legaCorrente() ? `<div class="empty">Nessuna formazione per questo GP</div>`
+          : P.piloti.slice(0, 5).map((p) => `<div class="row">${medal(p.pos)} ${racenum(p.numero)}
+              <div class="grow"><div class="name">${esc(p.nome)}</div><div class="meta">${teamChip(p.team)}</div></div>
+              <div class="pts big num ${sign(p.tot)}">${fmt(p.tot)}</div></div>`).join("")}
         <p class="provv-note">Provvisori: ${esc(nota)}</p>
       </section>`;
     } catch (e) { provv = ""; }
@@ -273,25 +373,32 @@ async function viewHome() {
   // weekend in corso con provvisori (da venerdi' a "weekend.py gp"): classifica
   // generale, ultimo GP e top piloti si confonderebbero con i provvisori
   const weekend = !!pv;
+  const L = legaCorrente();
   let lastGP = "";
   if (last && !weekend) {
-    // risultati dei giocatori nell'ultimo GP, come nella pagina GP, in un box blu
+    // risultati dei giocatori nell'ultimo GP, come nella pagina GP, in un box blu;
+    // senza lega: i migliori piloti del GP
     const R = await getRound(last);
     const io = me();
+    const piloti = R.piloti.slice(0, 5).map((p) => `<a class="row" href="#/gp/${last}/piloti">${medal(p.pos)} ${racenum(p.numero)}
+        <div class="grow"><div class="name">${esc(p.nome)}</div><div class="meta">${teamChip(p.team)}</div></div>
+        <div class="pts big num ${sign(p.tot)}">${fmt(p.tot)}</div></a>`).join("");
     lastGP = `
       <section class="provv solo">
-        <div class="provv-head"><span>Ultimo GP · R${last} ${esc(R.gp)}</span><a href="#/gp/${last}">Dettagli →</a></div>
+        <div class="provv-head"><span>Ultimo GP · R${last} ${esc(R.gp)}</span><a href="#/gp/${last}${L ? "" : "/piloti"}">Dettagli →</a></div>
         ${R.gara_annullata ? `<div class="alert info">🌧️ <b>Gara annullata.</b> ${ANNULLATA}</div>` : ""}
-        ${R.giocatori.length ? R.giocatori.map((g) => rigaGiocatore(g, io, "x", false)).join("")
+        ${!L ? piloti : R.giocatori.length ? R.giocatori.map((g) => rigaGiocatore(g, io, "x", false)).join("")
           : `<div class="empty">Nessuna rosa compilata per questo GP</div>`}
       </section>`;
   }
 
   view.innerHTML = `
+    ${legaBar()}
     ${hero}${provv}${lastGP}
+    ${L ? "" : invitoLega()}
     ${segnalaCard()}
     <div id="notif"></div>
-    ${weekend ? "" : `<div class="section-title"><span>Classifica generale</span><a href="#/classifica">Completa →</a></div>
+    ${weekend || !L ? "" : `<div class="section-title"><span>Classifica generale</span><a href="#/classifica">Completa →</a></div>
     <div class="card">${standingsRows(5)}</div>`}
     <p class="foot">Dati aggiornati al ${esc(fDateTime(new Date(S.league.aggiornato)))}</p>
     <p class="foot" id="notif-foot"></p>`;
@@ -318,7 +425,12 @@ async function iscrizionePush() {
 }
 async function salvaIscrizione(sub) {
   const j = sub.toJSON();
-  const res = await rpc("push_iscrivi", { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
+  const args = { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth };
+  const a = authGet();
+  // con l'accesso l'iscrizione si aggancia all'account: la notifica dice la mia posizione nelle mie leghe
+  const res = a ? await rpc("push_iscrivi_utente", { ...args, p_player: a.id, p_pin: a.pin })
+                    .catch((e) => rpcMancante(e) ? rpc("push_iscrivi", args) : Promise.reject(e))
+                : await rpc("push_iscrivi", args);
   if (!res.ok) throw new Error(res.errore || "iscrizione rifiutata");
 }
 
@@ -467,7 +579,8 @@ function viewClassifica(tabArg) {
   const tabs = ["giocatori", "piloti", "team"];
   const tab = tabs.includes(tabArg) ? tabArg : "giocatori";
   const st = S.standings;
-  const giocati = st.giocati;
+  // giocatori: solo i GP della lega (una lega nata a stagione in corso parte dopo)
+  const giocati = tab !== "giocatori" ? st.giocati : legaCorrente() ? (st.giocati_lega || st.giocati) : [];
   const R = (n) => S.league.calendario.find((c) => c.round === n);
   const serie = serieClassifica(tab);
   const rk = rankOf(serie.map((s) => s.tot));
@@ -494,6 +607,7 @@ function viewClassifica(tabArg) {
     <p class="muted small" style="margin:6px 4px 0">Tocca un nome per aggiungerlo o toglierlo dal grafico.</p>`;
 
   view.innerHTML = `
+    ${legaBar()}
     <h1 class="page-title">Classifica</h1>
     <p class="page-sub">${giocati.length} GP disputati su 22${tab === "giocatori" ? "" : " · punti fanta"}</p>
     <div class="seg">${tabs.map((t) => `<button class="${t === tab ? "on" : ""}" onclick="location.hash='#/classifica/${t}'">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
@@ -652,8 +766,9 @@ async function viewGP(nArg, tabArg) {
 
   let body = "";
   if (tab === "giocatori") {
-    body = R.giocatori.length ? R.giocatori.map((g) =>
-      rigaGiocatore(g, io, "x card", g.nome === io || R.giocatori.length <= 3 && g.pos === 1)).join("")
+    body = !legaCorrente() ? invitoLega()
+      : R.giocatori.length ? R.giocatori.map((g) =>
+        rigaGiocatore(g, io, "x card", g.nome === io || R.giocatori.length <= 3 && g.pos === 1)).join("")
       : `<div class="card empty">Nessuna rosa compilata per questo GP</div>`;
   } else if (tab === "piloti") {
     body = `<div class="card">` + R.piloti.map((p) => `
@@ -688,6 +803,7 @@ async function viewGP(nArg, tabArg) {
   }
 
   view.innerHTML = `
+    ${legaBar()}
     ${pills}
     <h1 class="page-title">GP ${esc(R.gp)}</h1>
     <p class="page-sub">Round ${R.round} · ${esc(R.circuito)} · ${esc(R.data)}</p>
@@ -780,7 +896,12 @@ function viewSquadre(arg) {
     }).join("");
   }
 
+  if (!legaCorrente()) body = invitoLega();
+  else if (!S.league.asta.some((a) => a.piloti.length))
+    body = `<div class="card pad"><div class="alert info">Le rose compaiono qui dopo l'asta della lega,
+      quando l'admin dell'app le importa.</div></div>`;
   view.innerHTML = `
+    ${legaBar()}
     <h1 class="page-title">Squadre</h1>
     <p class="page-sub">Rose d'asta e formazioni schierate · <a href="#/classifica/piloti" style="color:var(--accent)">classifiche piloti e team →</a></p>
     ${body}`;
@@ -800,9 +921,13 @@ async function rpc(fn, args) {
   return r.json();
 }
 
-function statusList(st, rnd, conPiloti) {
+// membri di una lega come {id, nome} (dalle mie leghe su Supabase)
+const membriDi = (L) => L.membri.map((m) => ({ id: m.player_id, nome: m.nome }));
+
+function statusList(st, membri, conPiloti) {
+  if (st.ok === false) return `<div class="empty">${esc(st.errore)}</div>`;
   const inviate = Object.fromEntries((st.inviate || []).map((x) => [x.player_id, x]));
-  return `<div class="list">` + S.league.giocatori.map((g) => {
+  return `<div class="list">` + membri.map((g) => {
     const x = inviate[g.id];
     return `<div class="row">
       ${avatarHTML(g.nome, "width:34px;height:34px;font-size:15px;border-radius:10px")}
@@ -825,21 +950,44 @@ async function viewFormazione() {
       L'admin deve configurare Supabase (vedi GUIDA_APP.md).</div></div>`;
     return;
   }
+  const titolo = `<h1 class="page-title">${TITOLO_FORM}</h1>`;
+  const player = utente();
+  if (!player) {
+    view.innerHTML = `${titolo}<p class="page-sub">Entra per fare l'asta e schierare la formazione nelle tue leghe</p>${loginHTML()}`;
+    attivaLogin(viewFormazione);
+    return;
+  }
+  view.innerHTML = `${titolo}<div class="loading"><div class="spinner"></div></div>`;
+  await caricaLeghe();                  // asta aperta/chiusa e membri aggiornati
+  if (!S.leghe?.length) {
+    view.innerHTML = `${titolo}${invitoLega()}`;
+    return;
+  }
+  // lega per cui si schiera: quella scelta qui, altrimenti la lega corrente
+  const L = S.leghe.find((l) => l.lega_id === S.formLega) || legaCorrente() || S.leghe[0];
+  S.formLega = L.lega_id;
+  const auth = authGet();
+  const cred = { p_player: player.id, p_pin: auth.pin, p_lega: L.lega_id };
+  const membri = membriDi(L);
+
   const { lineup } = nextRaces();
   const now = new Date();
   // GP con formazioni chiuse ma risultati non ancora pubblicati
   const inCorso = S.league.calendario.filter((c) => !c.importato && c.deadline && new Date(c.deadline) <= now).pop();
-  const auth = authGet();
-  const player = auth && S.league.giocatori.find((g) => g.id === auth.id);
-  // asta: il form c'e' solo quando l'admin la apre (asta.py apri); se il database
-  // non ha ancora le funzioni dell'asta, vale come chiusa
-  const asta = await rpc("asta_stato", {}).then((a) => (a && a.aperta ? a : null)).catch(() => null);
+  // asta: il form c'e' solo quando l'admin della lega la apre
+  const asta = L.asta_aperta
+    ? await rpc("lega_asta_stato", cred).then((a) => (a && a.ok && a.aperta ? a : null)).catch(() => null) : null;
+
+  const scegli = S.leghe.length > 1 ? `
+    <div class="field"><label for="form-lega">Lega</label>
+      <select class="input" id="form-lega">${S.leghe.map((l) => `<option value="${esc(l.lega_id)}" ${
+        l.lega_id === L.lega_id ? "selected" : ""}>${esc(l.nome)}${l.asta_aperta ? " · asta aperta" : ""}</option>`).join("")}
+      </select></div>` : `<p class="page-sub" style="margin-top:-12px">Lega <b>${esc(L.nome)}</b></p>`;
 
   let main = "";
   if (!lineup && !asta) {
-    main = `<div class="card pad"><div class="alert info">Non ci sono GP con formazioni aperte.</div></div>`;
-  } else if (!player) {
-    main = loginHTML();
+    main = `<div class="card pad"><div class="alert info">Non ci sono GP con formazioni aperte${
+      L.sono_admin ? ". L'asta della lega la apri tu dalla pagina <a href=\"#/leghe\">Leghe</a>." : "."}</div></div>`;
   } else {
     const attesa = `<div class="loading" style="padding:30px 0"><div class="spinner"></div></div>`;
     main = (asta ? `${lineup ? `<div class="section-title"><span>Asta · la tua rosa</span></div>` : ""}
@@ -849,37 +997,32 @@ async function viewFormazione() {
   }
 
   view.innerHTML = `
-    <h1 class="page-title">${TITOLO_FORM}</h1>
+    ${titolo}
     ${asta ? `<p class="page-sub"><b>Asta aperta</b> · dichiara piloti e team presi e i crediti spesi</p>` : ""}
     ${lineup ? `<p class="page-sub"${asta ? ` style="margin-top:-12px"` : ""}>Round ${lineup.round} · <b>GP ${esc(lineup.gp)}</b> · chiude ${esc(fDateTime(new Date(lineup.deadline)))}</p>` : ""}
-    ${player && (lineup || asta) ? `<p class="page-sub" style="margin-top:-12px">Ciao <b>${esc(nick(player.nome))}</b> · <a class="linkbtn" href="#/profilo">Profilo</a> · <button class="linkbtn" id="logout">Esci</button></p>` : ""}
+    <p class="page-sub" style="margin-top:-12px">Ciao <b>${esc(nick(player.nome))}</b> · <a class="linkbtn" href="#/profilo">Profilo</a> · <button class="linkbtn" id="logout">Esci</button></p>
+    ${scegli}
     ${main}
     ${segnalaCard()}
-    ${asta ? `<div class="section-title"><span>Rose d'asta inviate</span></div>
-      <div class="card" id="asta-list">${listaAsta(asta)}</div>` : ""}
+    ${asta ? `<div class="section-title"><span>Rose d'asta inviate · ${esc(L.nome)}</span></div>
+      <div class="card" id="asta-list">${listaAsta(asta, membri)}</div>` : ""}
     ${lineup ? `<div class="section-title"><span>Chi ha già schierato · R${lineup.round}</span></div>
       <div class="card" id="status-next"><div class="empty">…</div></div>` : ""}
     ${inCorso ? `<div class="section-title"><span>Formazioni GP ${esc(inCorso.gp)}</span></div>
       <div class="card" id="status-now"><div class="empty">…</div></div>` : ""}`;
 
   document.getElementById("logout")?.addEventListener("click", async () => { await esci(); viewFormazione(); });
+  document.getElementById("form-lega")?.addEventListener("change", (e) => { S.formLega = e.target.value; viewFormazione(); });
   contaSegnalazioni();
 
-  if (lineup) rpc("lineup_status", { p_round: lineup.round })
-    .then((st) => { document.getElementById("status-next").innerHTML = statusList(st, lineup.round, false); })
-    .catch((e) => { document.getElementById("status-next").innerHTML = `<div class="empty">${esc(e.message)}</div>`; });
-  if (inCorso) rpc("lineup_status", { p_round: inCorso.round })
-    .then((st) => { document.getElementById("status-now").innerHTML = statusList(st, inCorso.round, true); })
-    .catch((e) => { document.getElementById("status-now").innerHTML = `<div class="empty">${esc(e.message)}</div>`; });
+  const stato = (id, rnd, conPiloti) => rpc("lega_lineup_status", { ...cred, p_round: rnd })
+    .then((st) => { const el = document.getElementById(id); if (el) el.innerHTML = statusList(st, membri, conPiloti); })
+    .catch((e) => { const el = document.getElementById(id); if (el) el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; });
+  if (lineup) stato("status-next", lineup.round, false);
+  if (inCorso) stato("status-now", inCorso.round, true);
 
-  if (!lineup && !asta) return;
-  if (!player) {
-    attivaLogin((id, pin) => lineup ? rpc("my_lineup", { p_player: id, p_pin: pin, p_round: lineup.round })
-                                    : rpc("my_asta", { p_player: id, p_pin: pin }), viewFormazione);
-    return;
-  }
-  if (asta) editorAsta(player, auth.pin, asta);
-  if (lineup) editorFormazione(player, auth.pin, lineup);
+  if (asta) editorAsta(player, cred, asta, L);
+  if (lineup) editorFormazione(player, cred, lineup, L, () => stato("status-next", lineup.round, false));
 }
 
 /* accesso con password (formazione, asta, segnalazioni, profilo): nel telefono
@@ -887,45 +1030,52 @@ async function viewFormazione() {
 function loginHTML() {
   return `
       <div class="card pad">
-        <div class="field"><label>Chi sei?</label>
-          <div class="players-pick" id="who">${S.league.giocatori.map((g) =>
-            `<button type="button" data-id="${esc(g.id)}">${esc(g.nome)}</button>`).join("")}</div></div>
+        <div class="seg" id="login-mode"><button type="button" class="on" data-m="accedi">Accedi</button>
+          <button type="button" data-m="registrati">Registrati</button></div>
         <form id="login">
+          <div class="field"><label for="user">Nome utente</label>
+            <input class="input" id="user" autocomplete="username" autocapitalize="none" spellcheck="false"
+              maxlength="20" placeholder="Il tuo nome utente" required></div>
           <div class="field"><label for="pin">Password</label>
             <input class="input" id="pin" type="password" autocomplete="current-password" placeholder="La tua password" required></div>
+          <div class="field" id="pin2-box" hidden><label for="pin2">Ripeti la password</label>
+            <input class="input" id="pin2" type="password" autocomplete="new-password" minlength="6" maxlength="64"></div>
           <label class="check"><input type="checkbox" id="ricordami" checked> Ricordami su questo dispositivo</label>
           <div id="login-msg"></div>
-          <button class="btn block" type="submit" disabled id="login-btn">Entra</button>
+          <button class="btn block" type="submit" id="login-btn">Entra</button>
         </form>
-        <p class="muted small center" style="margin:12px 0 0">La prima password è il PIN che ti ha dato l'admin: poi la cambi dal profilo.</p>
+        <p class="muted small center" style="margin:12px 0 0" id="login-nota">Giocavi già? Il nome utente è il tuo nome nella lega,
+          la password è quella di sempre.</p>
       </div>`;
 }
 
-const rpcMancante = (e) => /\((404|400)\)/.test(e.message);   // schema.sql senza il profilo
+const rpcMancante = (e) => /\((404|400)\)/.test(e.message);   // database senza le funzioni nuove
 
 async function esci() {
   const a = authGet();
   if (a?.pin?.startsWith("t:")) await rpc("esci", { p_token: a.pin }).catch(() => {});
   authSet(null);
+  await caricaDati().catch(() => {});   // senza accesso: dati senza giocatori
 }
 
-// nickname e foto di tutti (solo con un accesso valido); copia nel telefono per l'avvio
+// il mio account (nome, nickname, foto) e le mie leghe; copia nel telefono per l'avvio
 async function caricaProfili() {
   const a = authGet();
   if (!a || !sbOK()) return false;
   try {
-    const r = await rpc("profili_lega", { p_player: a.id, p_pin: a.pin });
-    if (!r.ok) {
-      if (/scadut/i.test(r.errore || "")) authSet(null);   // gettone scaduto o password cambiata altrove
-      return false;
+    const r = await rpc("chi_sono", { p_player: a.id, p_pin: a.pin });
+    if (r.ok) {
+      S.io = r;
+      if (a.nome !== r.nome) authSet({ ...a, nome: r.nome }, authRicordato());
+    } else if (/scadut|errat/i.test(r.errore || "")) {
+      authSet(null);                     // gettone scaduto o password cambiata altrove
+      return true;
     }
-    const nuovi = Object.fromEntries(r.profili.map((p) => [p.player_id, p]));
-    const cambiati = JSON.stringify(nuovi) !== JSON.stringify(S.profili || {});
-    S.profili = nuovi;
-    lsSet("fm_profili", nuovi);
-    iconaProfilo();
-    return cambiati;
-  } catch { return false; }
+  } catch { /* offline: restano i dati salvati */ }
+  const cambiate = await caricaLeghe();
+  lsSet("fm_profili", { io: S.io });
+  aggiornaProfili();
+  return cambiate;
 }
 
 // icona in alto a destra: la propria foto quando si e' collegati
@@ -939,39 +1089,49 @@ function iconaProfilo() {
     : `<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>`;
 }
 
-function attivaLogin(verifica, dopo) {
-  let chosen = null;
+// accesso o registrazione (stesso modulo); poi le mie leghe e i dati della lega corrente.
+// Chi non e' ancora in nessuna lega va alla pagina Leghe.
+function attivaLogin(dopo) {
+  let modo = "accedi";
   const btn = document.getElementById("login-btn");
-  document.getElementById("who").addEventListener("click", (e) => {
+  const msg = document.getElementById("login-msg");
+  document.getElementById("login-mode").addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (!b) return;
-    chosen = b.dataset.id;
-    document.querySelectorAll("#who button").forEach((x) => x.classList.toggle("on", x === b));
-    btn.disabled = false;
-    document.getElementById("pin").focus();
+    modo = b.dataset.m;
+    document.querySelectorAll("#login-mode button").forEach((x) => x.classList.toggle("on", x === b));
+    const reg = modo === "registrati";
+    document.getElementById("pin2-box").hidden = !reg;
+    document.getElementById("pin2").required = reg;
+    document.getElementById("pin").autocomplete = reg ? "new-password" : "current-password";
+    document.getElementById("pin").placeholder = reg ? "Almeno 6 caratteri" : "La tua password";
+    document.getElementById("user").placeholder = reg ? "Da 3 a 20 caratteri" : "Il tuo nome utente";
+    document.getElementById("login-nota").textContent = reg
+      ? "Il nome utente è quello che vedono gli altri giocatori (poi puoi aggiungere un nickname)."
+      : "Giocavi già? Il nome utente è il tuo nome nella lega, la password è quella di sempre.";
+    btn.textContent = reg ? "Crea account" : "Entra";
+    msg.innerHTML = "";
   });
   document.getElementById("login").addEventListener("submit", async (e) => {
     e.preventDefault();
+    const user = document.getElementById("user").value.trim();
     const pwd = document.getElementById("pin").value;
     const ricorda = document.getElementById("ricordami").checked;
-    const msg = document.getElementById("login-msg");
+    if (modo === "registrati" && pwd !== document.getElementById("pin2").value) {
+      msg.innerHTML = `<div class="alert ko">Le due password non coincidono.</div>`;
+      return;
+    }
     btn.disabled = true;
     try {
-      let auth;
-      try {
-        const r = await rpc("accedi", { p_player: chosen, p_password: pwd, p_ricordami: ricorda });
-        if (!r.ok) throw new Error(r.errore);
-        auth = { id: chosen, pin: r.token };
-      } catch (err) {
-        if (!rpcMancante(err)) throw err;
-        // database senza il profilo: accesso come prima, col PIN
-        const r = await verifica(chosen, pwd.trim());
-        if (!r.ok) throw new Error(r.errore);
-        auth = { id: chosen, pin: pwd.trim() };
-      }
-      authSet(auth, ricorda);
+      const r = await rpc(modo === "registrati" ? "registrati" : "accedi_utente",
+        { p_username: user, p_password: pwd, p_ricordami: ricorda })
+        .catch((err) => { throw rpcMancante(err) ? new Error("Accesso non disponibile: l'admin deve aggiornare il database") : err; });
+      if (!r.ok) throw new Error(r.errore);
+      authSet({ id: r.player_id, pin: r.token, nome: r.nome }, ricorda);
       await caricaProfili();
-      dopo();
+      await caricaDati();
+      if (!S.leghe?.length && location.hash !== "#/leghe") location.hash = "#/leghe";
+      else dopo();
     } catch (err) {
       msg.innerHTML = `<div class="alert ko">${esc(err.message)}</div>`;
       btn.disabled = false;
@@ -980,10 +1140,10 @@ function attivaLogin(verifica, dopo) {
 }
 
 /* rose d'asta inviate da tutti (l'asta e' gia' avvenuta dal vivo: niente di segreto) */
-function listaAsta(st) {
+function listaAsta(st, membri) {
   const budget = st.budget ?? S.league.asta_regole?.budget;
   const inviate = Object.fromEntries((st.inviate || []).map((x) => [x.player_id, x]));
-  return `<div class="list">` + S.league.giocatori.map((g) => {
+  return `<div class="list">` + membri.map((g) => {
     const x = inviate[g.id];
     const voci = x ? x.piloti.map((p) => `${esc(abbr(p.nome))} ${fmt(p.prezzo)}`)
       .concat(x.team ? [`${esc(x.team)} ${fmt(x.prezzo_team)}`] : []) : [];
@@ -999,16 +1159,20 @@ function listaAsta(st) {
   }).join("") + `</div>`;
 }
 
-async function editorAsta(player, pin, asta) {
+// risposta negativa di una funzione della lega: accesso scaduto -> si rientra
+function erroreAccesso(box, r) {
+  const scaduto = /scadut|errat/i.test(r.errore || "");
+  if (scaduto) authSet(null);
+  box.innerHTML = `<div class="alert ko">${esc(r.errore)}</div>${scaduto
+    ? `<button class="btn ghost block" onclick="location.reload()">Accedi di nuovo</button>` : ""}`;
+}
+
+async function editorAsta(player, cred, asta, L) {
   const box = document.getElementById("asta-box");
   let saved = null;
   try {
-    const r = await rpc("my_asta", { p_player: player.id, p_pin: pin });
-    if (!r.ok) {
-      authSet(null);
-      box.innerHTML = `<div class="alert ko">${esc(r.errore)}</div><button class="btn ghost block" onclick="location.reload()">Accedi di nuovo</button>`;
-      return;
-    }
+    const r = await rpc("lega_my_asta", cred);
+    if (!r.ok) return erroreAccesso(box, r);
     saved = r.rosa;
   } catch (e) {
     box.innerHTML = `<div class="alert ko">${esc(e.message)}</div>`;
@@ -1078,7 +1242,8 @@ async function editorAsta(player, pin, asta) {
       ${nT ? `<div class="field" style="margin-top:6px"><label>Team</label></div>${riga(sel[nP], nP)}` : ""}
       <div id="asta-tot"></div>
       <button class="btn block" id="asta-send" style="margin-top:12px"></button>
-      <p class="muted small center" style="margin:10px 0 0">Puoi correggerla finché l'asta è aperta. L'admin la porta nel foglio ASTA.</p>`;
+      <p class="muted small center" style="margin:10px 0 0">Puoi correggerla finché l'asta di <b>${esc(L.nome)}</b> è aperta.
+        Vale per le formazioni dopo l'import dell'admin dell'app.</p>`;
     box.querySelectorAll("select[data-i]").forEach((s) => s.addEventListener("change", () => {
       sel[+s.dataset.i].nome = s.value;
       render();                  // aggiorna i piloti disabilitati negli altri campi
@@ -1098,13 +1263,16 @@ async function editorAsta(player, pin, asta) {
     const piloti = sel.filter((x) => !x.team).map((x) => ({ nome: x.nome, prezzo: +x.prezzo }));
     const team = sel.find((x) => x.team);
     try {
-      const r = await rpc("submit_asta", { p_player: player.id, p_pin: pin, p_piloti: piloti,
+      const r = await rpc("lega_submit_asta", { ...cred, p_piloti: piloti,
         p_team: team ? team.nome : null, p_prezzo_team: team ? +team.prezzo : null });
       if (!r.ok) throw new Error(r.errore);
       saved = { piloti, team: team?.nome, prezzo_team: team ? +team.prezzo : null, submitted_at: r.submitted_at };
       inviata = firma(sel);
       render(`<div class="alert ok"><b>Fatto!</b> Rosa d'asta inviata: ${fmt(r.speso)} crediti spesi.</div>`);
-      rpc("asta_stato", {}).then((st) => { document.getElementById("asta-list").innerHTML = listaAsta(st); });
+      rpc("lega_asta_stato", cred).then((st) => {
+        const el = document.getElementById("asta-list");
+        if (el && st.ok) el.innerHTML = listaAsta(st, membriDi(L));
+      });
     } catch (e) {
       render(`<div class="alert ko">${esc(e.message)}</div>`);
     }
@@ -1112,30 +1280,33 @@ async function editorAsta(player, pin, asta) {
   render();
 }
 
-async function editorFormazione(player, pin, lineup) {
+async function editorFormazione(player, cred, lineup, L, aggiornaStato) {
   const box = document.getElementById("lineup-box");
-  let saved = null;
+  let saved = null, valida = null;
   try {
-    const r = await rpc("my_lineup", { p_player: player.id, p_pin: pin, p_round: lineup.round });
-    if (!r.ok) {
-      authSet(null);
-      box.innerHTML = `<div class="alert ko">${esc(r.errore)}</div><button class="btn ghost block" onclick="location.reload()">Accedi di nuovo</button>`;
-      return;
-    }
+    const r = await rpc("lega_my_lineup", { ...cred, p_round: lineup.round });
+    if (!r.ok) return erroreAccesso(box, r);
     saved = r.lineup;
+    valida = r.rosa;                    // rosa valida in QUESTA lega (dopo l'import dell'asta)
   } catch (e) {
     box.innerHTML = `<div class="alert ko">${esc(e.message)}</div>`;
     return;
   }
-  const rosa = S.league.asta.find((a) => a.id === player.id);
-  if (!rosa || rosa.piloti.length < 3) {
-    box.innerHTML = `<div class="alert ko">Rosa d'asta incompleta: chiedi all'admin.</div>`;
+  if (!valida || (valida.piloti || []).length < 3) {
+    box.innerHTML = `<div class="alert info">La tua rosa in <b>${esc(L.nome)}</b> non è ancora valida:
+      dopo l'asta della lega l'admin dell'app la importa, poi qui schieri la formazione.</div>`;
     return;
   }
+  const rosa = {
+    piloti: valida.piloti.map((p) => ({ nome: p.nome, numero: riderInfo(p.nome).numero, team: riderInfo(p.nome).team })),
+    team: valida.team ? { nome: valida.team } : null,
+  };
   const nomi = rosa.piloti.map((p) => p.nome);
-  // riserva iniziale: quella salvata, altrimenti quella dell'ultimo GP, altrimenti il terzo pilota
-  const ultime = Object.keys(S.league.rose).map(Number).sort((a, b) => b - a)
-    .map((r) => S.league.rose[r].find((x) => x.giocatore === player.nome)).filter(Boolean);
+  // riserva iniziale: quella salvata, altrimenti quella dell'ultimo GP (se la lega e'
+  // quella mostrata), altrimenti il terzo pilota
+  const rose = L.lega_id === legaCorrente()?.lega_id ? S.league.rose : {};
+  const ultime = Object.keys(rose).map(Number).sort((a, b) => b - a)
+    .map((r) => rose[r].find((x) => x.giocatore === player.nome)).filter(Boolean);
   let riserva = saved?.riserva || (ultime[0] && nomi.includes(ultime[0].riserva) ? ultime[0].riserva : nomi[2]);
   const seasonP = Object.fromEntries(S.season.piloti.map((p) => [p.nome, p]));
 
@@ -1176,13 +1347,12 @@ async function editorFormazione(player, pin, lineup) {
     btn.textContent = "Invio…";
     const tit = nomi.filter((n) => n !== riserva);
     try {
-      const r = await rpc("submit_lineup", { p_player: player.id, p_pin: pin, p_round: lineup.round,
+      const r = await rpc("lega_submit_lineup", { ...cred, p_round: lineup.round,
         p_tit1: tit[0], p_tit2: tit[1], p_riserva: riserva });
       if (!r.ok) throw new Error(r.errore);
       saved = { tit1: tit[0], tit2: tit[1], riserva, submitted_at: r.submitted_at };
-      render(`<div class="alert ok"><b>Fatto!</b> Titolari ${esc(tit.join(" e "))}, riserva ${esc(riserva)}.</div>`);
-      rpc("lineup_status", { p_round: lineup.round })
-        .then((st) => { document.getElementById("status-next").innerHTML = statusList(st, lineup.round, false); });
+      render(`<div class="alert ok"><b>Fatto!</b> ${esc(L.nome)}: titolari ${esc(tit.join(" e "))}, riserva ${esc(riserva)}.</div>`);
+      aggiornaStato();
     } catch (e) {
       render(`<div class="alert ko">${esc(e.message)}</div>`);
     }
@@ -1255,7 +1425,7 @@ async function viewSegnala() {
     return;
   }
   const auth = authGet();
-  const player = auth && S.league.giocatori.find((g) => g.id === auth.id);
+  const player = utente();              // le segnalazioni sono sui piloti: valgono per tutte le leghe
   view.innerHTML = `${titolo}
     <p class="page-sub">Round ${c.round} · <b>GP ${esc(c.gp)}</b> · eventi che i PDF ufficiali non riportano</p>
     ${player ? `<p class="page-sub" style="margin-top:-12px">Ciao <b>${esc(nick(player.nome))}</b> · <button class="linkbtn" id="logout">Esci</button></p>` : ""}
@@ -1265,9 +1435,7 @@ async function viewSegnala() {
     <div class="section-title"><span>Segnalato finora</span></div>
     <div class="card" id="seg-list"><div class="loading" style="padding:30px 0"><div class="spinner"></div></div></div>`;
   document.getElementById("logout")?.addEventListener("click", async () => { await esci(); viewSegnala(); });
-  if (!player) {
-    attivaLogin((id, pin) => rpc("my_lineup", { p_player: id, p_pin: pin, p_round: c.round }), viewSegnala);
-  }
+  if (!player) attivaLogin(viewSegnala);
 
   let st = { eventi: [] };
   let scelta = { pilota: "", campo: "" };
@@ -1445,13 +1613,14 @@ async function viewProfilo() {
     return;
   }
   const auth = authGet();
-  const player = auth && S.league.giocatori.find((g) => g.id === auth.id);
+  const player = utente();
   if (!player) {
     view.innerHTML = `${titolo}<p class="page-sub">Entra per schierare, segnalare e personalizzare il tuo profilo</p>${loginHTML()}`;
-    attivaLogin((id, pin) => rpc("my_asta", { p_player: id, p_pin: pin }), viewProfilo);
+    attivaLogin(viewProfilo);
     return;
   }
   await caricaProfili();
+  if (!authGet()) return viewProfilo();  // accesso scaduto
   const prof = S.profili?.[player.id] || {};
   let foto = prof.foto || null;
   const pos = S.standings.tabella.find((r) => r.nome === player.nome);
@@ -1463,7 +1632,7 @@ async function viewProfilo() {
         <button type="button" class="profilo-foto" id="foto-btn" aria-label="Cambia foto"></button>
         <div class="grow">
           <div class="name" id="nick-vis"></div>
-          <div class="meta muted small">${esc(player.nome)}${pos ? ` · ${pos.pos}° in classifica · ${fmt(pos.tot)} pt` : ""}</div>
+          <div class="meta muted small">${esc(player.nome)}${pos && legaCorrente() ? ` · ${pos.pos}° in ${esc(legaCorrente().nome)} · ${fmt(pos.tot)} pt` : ""}</div>
           <div class="profilo-azioni"><button type="button" class="linkbtn" id="foto-cambia">Cambia foto</button>
             <button type="button" class="linkbtn" id="foto-togli">Togli foto</button></div>
         </div>
@@ -1472,7 +1641,7 @@ async function viewProfilo() {
       <form id="prof-form">
         <div class="field"><label for="nick">Nickname</label>
           <input class="input" id="nick" maxlength="20" placeholder="${esc(player.nome)}" value="${esc(prof.nickname || "")}"></div>
-        <p class="muted small" style="margin:-4px 0 12px">Nickname e foto li vedono solo i giocatori che hanno fatto l'accesso. Nell'Excel resti <b>${esc(player.nome)}</b>.</p>
+        <p class="muted small" style="margin:-4px 0 12px">Nickname e foto li vedono i giocatori delle tue leghe che hanno fatto l'accesso. Il tuo nome utente resta <b>${esc(player.nome)}</b>.</p>
         <div id="prof-msg"></div>
         <button class="btn block" type="submit" ${conGettone ? "" : "disabled"}>Salva profilo</button>
       </form>
@@ -1491,7 +1660,8 @@ async function viewProfilo() {
       </form>
     </div>
     ${conGettone ? "" : `<div class="alert info" style="margin-top:12px">Profilo e password si attivano quando l'admin aggiorna il database.</div>`}
-    <button class="btn ghost block" id="logout" style="margin-top:16px">Esci</button>
+    <a class="btn ghost block" href="#/leghe" style="margin-top:16px">🏆 Le mie leghe</a>
+    <button class="btn ghost block" id="logout" style="margin-top:10px">Esci</button>
     <p class="muted small center" style="margin:10px 0 0">${authRicordato() ? "Accesso ricordato su questo dispositivo." : "L'accesso finisce quando chiudi l'app."}</p>`;
 
   const disegna = () => {
@@ -1549,7 +1719,7 @@ async function viewProfilo() {
       const r = await rpc("cambia_password", { p_player: player.id, p_attuale: document.getElementById("pwd-old").value,
         p_nuova: nuova, p_ricordami: ricorda });
       if (!r.ok) throw new Error(r.errore);
-      authSet({ id: player.id, pin: r.token }, ricorda);
+      authSet({ id: player.id, pin: r.token, nome: player.nome }, ricorda);
       e.target.reset();
       msg.innerHTML = `<div class="alert ok">✓ Password cambiata. Gli altri dispositivi dovranno rifare l'accesso.</div>`;
     } catch (err) {
@@ -1559,6 +1729,141 @@ async function viewProfilo() {
   });
 
   document.getElementById("logout").addEventListener("click", async () => { await esci(); viewProfilo(); });
+}
+
+/* =============================================================== LEGHE */
+// le mie leghe (tocca per entrarci), crea, entra con il codice; per la lega
+// corrente: codice invito, membri, asta (solo admin), esci dalla lega
+async function viewLeghe() {
+  setTab("leghe");
+  const titolo = `<h1 class="page-title">Leghe</h1>`;
+  if (!sbOK()) {
+    view.innerHTML = `${titolo}<div class="card pad"><div class="alert info">Le leghe dall'app non sono ancora attive.</div></div>`;
+    return;
+  }
+  const u = utente();
+  if (!u) {
+    view.innerHTML = `${titolo}<p class="page-sub">Accedi o registrati: poi crei una lega o entri in quella dei tuoi amici con il codice invito</p>${loginHTML()}`;
+    attivaLogin(viewLeghe);
+    return;
+  }
+  view.innerHTML = `${titolo}<div class="loading"><div class="spinner"></div></div>`;
+  await caricaLeghe();
+  if (!authGet()) return viewLeghe();    // accesso scaduto
+  const leghe = S.leghe || [];
+  const L = legaCorrente();
+  const auth = authGet();
+  const cred = (l) => ({ p_player: u.id, p_pin: auth.pin, p_lega: l.lega_id });
+
+  const dettaglio = L ? `
+    <div class="section-title"><span>${esc(L.nome)}</span></div>
+    <div class="card pad">
+      <div class="field"><label>Codice invito</label></div>
+      <div class="codice-invito"><b class="num">${esc(L.codice)}</b>
+        <button type="button" class="btn sm" id="condividi">Condividi</button></div>
+      <p class="muted small" style="margin:8px 0 0">Chi lo inserisce in <b>Entra in una lega</b> si unisce a ${esc(L.nome)} (massimo 7 giocatori).</p>
+    </div>
+    <div class="card"><div class="list">${L.membri.map((m) => `<div class="row">
+        ${avatarHTML(m.nome, "width:34px;height:34px;font-size:15px;border-radius:10px")}
+        <div class="grow"><div class="name">${esc(m.nickname || m.nome)}${m.player_id === u.id ? ' <span class="chip accent">tu</span>' : ""}</div>
+          <div class="meta">${m.nickname ? esc(m.nome) + " · " : ""}${m.player_id === L.admin ? "admin della lega" : "giocatore"}</div></div>
+      </div>`).join("")}</div></div>
+    ${L.sono_admin && !L.excel ? `
+    <div class="section-title"><span>Asta della lega</span></div>
+    <div class="card pad">
+      <div class="alert ${L.asta_aperta ? "ok" : "info"}">${L.asta_aperta
+        ? "<b>Asta aperta</b>: i giocatori dichiarano piloti, team e crediti da <a href=\"#/formazione\">Asta e Formazione</a>."
+        : "Asta chiusa. Aprila quando avete fatto l'asta: ognuno dichiara la sua rosa dall'app."}</div>
+      <div class="notif-btns" style="margin-top:10px">
+        <button type="button" class="btn sm" id="asta-on">${L.asta_aperta ? "Chiudi asta" : "Apri asta"}</button>
+        <button type="button" class="btn ghost sm" id="asta-svuota">Svuota rose inviate</button></div>
+      <div id="asta-msg"></div>
+      <p class="muted small" style="margin:10px 0 0">Dopo l'asta l'admin dell'app rende valide le rose: da lì si schierano le formazioni.</p>
+    </div>` : ""}
+    ${L.excel ? "" : `<button class="btn ghost block" id="esci-lega" style="margin-top:12px">Esci da ${esc(L.nome)}</button>
+      <div id="esci-msg"></div>`}` : "";
+
+  view.innerHTML = `${titolo}
+    <p class="page-sub">Ciao <b>${esc(nick(u.nome))}</b> · ${leghe.length
+      ? (leghe.length > 1 ? "tocca una lega per vederne risultati e classifica" : "la tua lega")
+      : "non sei ancora in nessuna lega"}</p>
+    ${leghe.length ? `<div class="card"><div class="list">${leghe.map((l) => {
+      const on = L && l.lega_id === L.lega_id;
+      return `<button type="button" class="row lega-row ${on ? "on" : ""}" data-l="${esc(l.lega_id)}">
+        <span class="lega-ico">🏆</span>
+        <div class="grow"><div class="name">${esc(l.nome)}</div>
+          <div class="meta">${l.membri.length} giocator${l.membri.length === 1 ? "e" : "i"}${l.sono_admin ? " · sei l'admin" : ""}${
+            l.asta_aperta ? " · asta aperta" : ""}${l.rosa_valida ? "" : " · rosa non ancora valida"}</div></div>
+        ${on ? `<span class="chip accent">attuale</span>` : `<span class="chip">entra →</span>`}
+      </button>`;
+    }).join("")}</div></div>` : ""}
+    ${dettaglio}
+    <div class="section-title"><span>Entra in una lega</span></div>
+    <div class="card pad"><form id="f-entra" class="inline-form">
+        <input class="input" id="codice" placeholder="Codice invito" maxlength="12" autocapitalize="characters" spellcheck="false" required>
+        <button class="btn" type="submit">Entra</button></form>
+      <div id="entra-msg"></div></div>
+    <div class="section-title"><span>Crea una lega</span></div>
+    <div class="card pad"><form id="f-crea" class="inline-form">
+        <input class="input" id="nome-lega" placeholder="Nome della lega" minlength="3" maxlength="30" required>
+        <button class="btn" type="submit">Crea</button></form>
+      <div id="crea-msg"></div>
+      <p class="muted small" style="margin:10px 0 0">Ne diventi l'admin: inviti gli amici con il codice e apri tu l'asta.
+        Piloti, team e regolamento sono uguali in tutte le leghe.</p></div>
+    <button class="btn ghost block" id="logout" style="margin-top:16px">Esci dall'account</button>`;
+
+  view.querySelectorAll(".lega-row").forEach((b) => b.addEventListener("click", () => setLega(b.dataset.l, "#/")));
+  document.getElementById("logout").addEventListener("click", async () => { await esci(); viewLeghe(); });
+
+  const form = (id, msgId, fn) => document.getElementById(id).addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector("button");
+    const msg = document.getElementById(msgId);
+    btn.disabled = true;
+    try { await fn(); } catch (err) { msg.innerHTML = `<div class="alert ko">${esc(err.message)}</div>`; }
+    btn.disabled = false;
+  });
+  form("f-entra", "entra-msg", async () => {
+    const r = await rpc("unisciti_lega", { p_player: u.id, p_pin: auth.pin, p_codice: document.getElementById("codice").value });
+    if (!r.ok) throw new Error(r.errore);
+    await caricaLeghe();
+    await setLega(r.lega.lega_id, "#/");
+  });
+  form("f-crea", "crea-msg", async () => {
+    const r = await rpc("crea_lega", { p_player: u.id, p_pin: auth.pin, p_nome: document.getElementById("nome-lega").value });
+    if (!r.ok) throw new Error(r.errore);
+    await caricaLeghe();
+    lsSet("fm_lega", r.lega.lega_id);
+    await caricaDati();
+    viewLeghe();                         // resta qui: si vede subito il codice da condividere
+  });
+
+  if (!L) return;
+  document.getElementById("condividi")?.addEventListener("click", async () => {
+    const testo = `Entra nella mia lega FantaMotoGP "${L.nome}": codice invito ${L.codice}`;
+    const url = location.href.split("#")[0] + "#/leghe";
+    try {
+      if (navigator.share) await navigator.share({ title: "FantaMotoGP", text: testo, url });
+      else { await navigator.clipboard.writeText(`${testo}\n${url}`); document.getElementById("condividi").textContent = "Copiato ✓"; }
+    } catch { /* condivisione annullata */ }
+  });
+  const asta = (aperta, svuota) => async () => {
+    if (svuota && !confirm("Cancellare le rose d'asta inviate in questa lega?")) return;
+    const r = await rpc("lega_asta_imposta", { ...cred(L), p_aperta: aperta, p_svuota: svuota }).catch((e) => ({ ok: false, errore: e.message }));
+    if (!r.ok) { document.getElementById("asta-msg").innerHTML = `<div class="alert ko">${esc(r.errore)}</div>`; return; }
+    viewLeghe();
+  };
+  document.getElementById("asta-on")?.addEventListener("click", asta(!L.asta_aperta, false));
+  document.getElementById("asta-svuota")?.addEventListener("click", asta(L.asta_aperta, true));
+  document.getElementById("esci-lega")?.addEventListener("click", async () => {
+    if (!confirm(`Uscire da ${L.nome}? La tua rosa d'asta e le formazioni in questa lega vengono cancellate.`)) return;
+    const r = await rpc("esci_lega", cred(L)).catch((e) => ({ ok: false, errore: e.message }));
+    if (!r.ok) { document.getElementById("esci-msg").innerHTML = `<div class="alert ko">${esc(r.errore)}</div>`; return; }
+    lsSet("fm_lega", null);
+    await caricaLeghe();
+    await caricaDati();
+    viewLeghe();
+  });
 }
 
 /* ============================================================== router */
@@ -1576,6 +1881,7 @@ async function route() {
       case "calendario": viewCalendario(); break;
       case "regolamento": viewRegolamento(); break;
       case "profilo": await viewProfilo(); break;
+      case "leghe": await viewLeghe(); break;
       default: await viewHome();
     }
   } catch (e) {
@@ -1614,33 +1920,42 @@ function hideSplash() {
 }
 
 // all'avvio: chi ha ancora il PIN salvato (versione vecchia dell'app) passa a un
-// gettone di sessione senza rifare l'accesso; poi nickname e foto aggiornati
+// gettone di sessione senza rifare l'accesso; poi account, leghe, nickname e foto
+// aggiornati (se cambia la lega mostrata, ricarico i suoi dati)
 async function avvioAccesso() {
   const a = authGet();
   if (!a || !sbOK()) return;
   if (!a.pin.startsWith("t:")) {
     try {
       const r = await rpc("accedi", { p_player: a.id, p_password: a.pin, p_ricordami: authRicordato() });
-      if (r.ok) authSet({ id: a.id, pin: r.token }, authRicordato());
-    } catch { return; }                      // database senza il profilo: resta il PIN
+      if (r.ok) authSet({ id: a.id, pin: r.token, nome: a.nome }, authRicordato());
+      else return;
+    } catch { return; }
   }
-  // nickname o foto cambiati da un altro telefono: ridisegno la pagina (non durante
-  // la compilazione di un form)
-  if (await caricaProfili() && !/^#\/(formazione|segnala|profilo)/.test(location.hash)) route();
+  const base = S.base;
+  const cambiate = await caricaProfili();
+  if (!cambiate) return;
+  await caricaDati().catch(() => {});
+  // ridisegno la pagina (non durante la compilazione di un form)
+  if (S.base !== base || !/^#\/(formazione|segnala|profilo|leghe)/.test(location.hash)) route();
 }
 
 (async function init() {
   try {
-    [S.league, S.standings, S.season, S.config] = await Promise.all([
-      getJSON("data/league.json"), getJSON("data/standings.json"),
-      getJSON("data/season.json"), getJSON("data/config.json").catch(() => ({}))]);
+    S.config = await getJSON("data/config.json").catch(() => ({}));
+    if (authGet()) {
+      // ultima copia nel telefono: la lega giusta si vede subito, anche offline
+      S.leghe = lsGet("fm_leghe");
+      S.io = lsGet("fm_profili")?.io || null;
+      aggiornaProfili();
+    }
+    await caricaDati();
   } catch (e) {
     view.innerHTML = `<div class="card pad"><div class="alert ko">Impossibile caricare i dati (${esc(e.message)}).</div></div>`;
     hideSplash();
     return;
   }
   window.addEventListener("hashchange", route);
-  if (authGet()) S.profili = lsGet("fm_profili");
   iconaProfilo();
   await route();
   hideSplash();

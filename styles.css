@@ -557,6 +557,27 @@ img.avatar { object-fit: cover; padding: 0; }
 
 .foot { margin: 28px 0 0; text-align: center; color: var(--muted); font-size: 12.5px; }
 
+/* leghe: barra con la lega corrente, elenco delle mie leghe, codice invito */
+.lega-bar {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 8px 14px;
+  border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 14px;
+}
+.lega-bar b { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lega-bar small { font-weight: 600; white-space: nowrap; }
+button.row.lega-row {
+  width: 100%; border: 0; border-bottom: 1px solid var(--line); background: none; color: inherit;
+  font: inherit; text-align: left; cursor: pointer;
+}
+button.row.lega-row:last-child { border-bottom: 0; }
+button.row.lega-row:hover { background: var(--surface-2); }
+.lega-row.on { background: var(--accent-soft); }
+.lega-ico { font-size: 22px; line-height: 1; }
+.inline-form { display: flex; gap: 8px; }
+.inline-form .input { flex: 1; min-width: 0; }
+.inline-form .btn { flex: none; }
+.codice-invito { display: flex; align-items: center; gap: 12px; }
+.codice-invito b { flex: 1; font-size: 28px; letter-spacing: 4px; color: var(--accent); }
+
 @media (min-width: 640px) {
   .page-title { font-size: 34px; }
   .hero h2 { font-size: 36px; }
