@@ -1761,7 +1761,7 @@ async function viewLeghe() {
       <div class="field"><label>Codice invito</label></div>
       <div class="codice-invito"><b class="num">${esc(L.codice)}</b>
         <button type="button" class="btn sm" id="condividi">Condividi</button></div>
-      <p class="muted small" style="margin:8px 0 0">Chi lo inserisce in <b>Entra in una lega</b> si unisce a ${esc(L.nome)} (massimo 7 giocatori).</p>
+      <p class="muted small" style="margin:8px 0 0">Chi lo inserisce in <b>Entra in una lega</b> si unisce a ${esc(L.nome)} (${L.membri.length} su massimo ${L.max_giocatori ?? 7} giocatori).</p>
     </div>
     <div class="card"><div class="list">${L.membri.map((m) => `<div class="row">
         ${avatarHTML(m.nome, "width:34px;height:34px;font-size:15px;border-radius:10px")}
@@ -1792,7 +1792,7 @@ async function viewLeghe() {
       return `<button type="button" class="row lega-row ${on ? "on" : ""}" data-l="${esc(l.lega_id)}">
         <span class="lega-ico">🏆</span>
         <div class="grow"><div class="name">${esc(l.nome)}</div>
-          <div class="meta">${l.membri.length} giocator${l.membri.length === 1 ? "e" : "i"}${l.sono_admin ? " · sei l'admin" : ""}${
+          <div class="meta">${l.membri.length}/${l.max_giocatori ?? 7} giocatori${l.sono_admin ? " · sei l'admin" : ""}${
             l.asta_aperta ? " · asta aperta" : ""}${l.rosa_valida ? "" : " · rosa non ancora valida"}</div></div>
         ${on ? `<span class="chip accent">attuale</span>` : `<span class="chip">entra →</span>`}
       </button>`;
