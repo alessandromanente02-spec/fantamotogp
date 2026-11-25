@@ -592,6 +592,22 @@ button.row.lega-row:hover { background: var(--surface-2); }
 .inline-form .btn { flex: none; }
 .codice-invito { display: flex; align-items: center; gap: 12px; }
 .codice-invito b { flex: 1; font-size: 28px; letter-spacing: 4px; color: var(--accent); }
+/* formule di lega (8-11 giocatori): scelta dell'admin e riquadro nel Regolamento */
+.formula-opt {
+  display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 14px; width: 100%;
+  border: 2px solid var(--line); background: var(--bg); color: inherit; font: inherit; text-align: left;
+}
+.formula-opt + .formula-opt { margin-top: 8px; }
+.formula-opt .grow { flex: 1; min-width: 0; }
+.formula-opt b { display: block; font-size: 15px; }
+.formula-opt small { display: block; margin-top: 3px; font-size: 13px; line-height: 1.4; color: var(--muted); }
+.formula-opt.on { border-color: var(--accent); background: var(--accent-soft); }
+button.formula-opt { cursor: pointer; transition: border-color .15s, background .15s; }
+.formula-k {
+  display: grid; place-items: center; min-width: 34px; height: 34px; padding: 0 6px; border-radius: 10px;
+  background: var(--surface-2); color: var(--muted); font-weight: 900; font-size: 15px;
+}
+.formula-opt.on .formula-k { background: var(--accent); color: var(--accent-ink); }
 
 @media (min-width: 640px) {
   .page-title { font-size: 34px; }

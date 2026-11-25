@@ -63,6 +63,23 @@ async function caricaDati() {
   }
 }
 
+/* formule delle leghe (stesse regole di formule.py e leghe.sql): fino a 7 giocatori
+   quella standard; da 8 a 11 una di queste, scelta dall'admin prima dell'asta.
+   In tutte il team e' di un solo giocatore. */
+const SOGLIA_FORMULA = 7;
+const FORMULE = {
+  A: { titolo: "2 piloti + team, senza riserva",
+    testo: "Ogni pilota è di un solo giocatore. La formazione è automatica: non si invia niente. Chi salta la gara tiene i punti già fatti nel weekend." },
+  B: { titolo: "3 piloti + team, massimo 2 proprietari",
+    testo: "Lo stesso pilota può essere di 2 giocatori al massimo. La formazione si invia per ogni GP, con la riserva." },
+  C: { titolo: "3 piloti + team, senza limiti",
+    testo: "Lo stesso pilota può essere di più giocatori, senza limite. La formazione si invia per ogni GP, con la riserva." },
+};
+const formulaDi = (L) => (L && FORMULE[L.formula] ? L.formula : "standard");
+const formazioneAuto = (L) => formulaDi(L) === "A";
+const formulaHTML = (k) => `<span class="formula-k">${k}</span>
+  <span class="grow"><b>${esc(FORMULE[k].titolo)}</b><small>${esc(FORMULE[k].testo)}</small></span>`;
+
 async function setLega(id, dove) {
   lsSet("fm_lega", id);
   await caricaDati();
@@ -108,7 +125,8 @@ const TEAM_COLORS = {
   "Tech3": "#14b8a6", "Honda HRC": "#f43f5e", "LCR Honda": "#22a55b", "Yamaha Factory": "#4f46e5",
 };
 const teamColor = (t) => TEAM_COLORS[t] || "#8d95a8";
-const PLAYER_COLORS = ["#e10600", "#2f7cf6", "#e8b100", "#16a34a", "#9b5de5", "#f97316", "#0d9488"];
+const PLAYER_COLORS = ["#e10600", "#2f7cf6", "#e8b100", "#16a34a", "#9b5de5", "#f97316", "#0d9488",
+  "#ec4899", "#64748b", "#84cc16", "#06b6d4"];      // fino a 11 giocatori
 const playerColor = (nome) => {
   const i = (S.league?.giocatori || []).findIndex((g) => g.nome === nome);
   return PLAYER_COLORS[(i < 0 ? 0 : i) % PLAYER_COLORS.length];
@@ -164,7 +182,9 @@ const avatarHTML = (nome, stile = "") => {
 
 const medal = (pos, extra = "") => `<span class="medal ${pos <= 3 ? "p" + pos : ""} ${extra}">${pos}</span>`;
 const teamChip = (t) => t ? `<span class="chip"><span class="team-dot" style="background:${teamColor(t)}"></span>${esc(t)}</span>` : "";
-const ownerChip = (o) => o
+const ownerChip = (o) => Array.isArray(o)      // piu' proprietari (formule B e C)
+  ? o.slice(0, 3).map(ownerChip).join(" ") + (o.length > 3 ? ` <span class="chip">+${o.length - 3}</span>` : "")
+  : o
   ? `<span class="chip" style="color:${playerColor(o)}">● ${esc(nick(o))}</span>`
   : `<span class="chip">libero</span>`;
 const racenum = (n) => n != null ? `<span class="racenum">${esc(n)}</span>` : "";
@@ -313,6 +333,7 @@ async function viewHome() {
   const c = current || lineup;
   if (c) {
     const aperta = lineup && lineup.round === c.round;
+    const auto = formazioneAuto(legaCorrente());   // formula A: niente da inviare
     const bandiera = heroFlag(c.paese);
     hero = `
     <section class="hero${bandiera ? " flag" : ""}">${bandiera}
@@ -320,10 +341,12 @@ async function viewHome() {
       <h2>GP ${esc(c.gp)}</h2>
       <div class="circuit">${esc(c.circuito)} · ${esc(c.paese)}${c.sprint ? " · con Sprint" : ""}</div>
       <div class="hero-row">
-        ${aperta ? `<div><div class="hero-label">Formazioni chiudono tra</div><div class="countdown" id="cd"></div></div>
-                    <a class="btn light" href="#/formazione">Schiera la formazione</a>`
+        ${aperta ? `<div><div class="hero-label">${auto ? "Formazioni automatiche tra" : "Formazioni chiudono tra"}</div><div class="countdown" id="cd"></div></div>
+                    ${auto ? `<a class="btn light" href="#/squadre">Vedi le squadre</a>`
+                           : `<a class="btn light" href="#/formazione">Schiera la formazione</a>`}`
                  : `<div><div class="hero-label">Formazioni chiuse</div><b>Weekend in corso</b></div>
-                    <a class="btn light" href="#/formazione">Vedi le formazioni</a>`}
+                    ${auto ? `<a class="btn light" href="#/squadre">Vedi le squadre</a>`
+                           : `<a class="btn light" href="#/formazione">Vedi le formazioni</a>`}`}
       </div>
     </section>`;
   } else {
@@ -705,7 +728,7 @@ function riderBlock(p, pts) {
         </div>
         <div class="pts big num ${sign(pts)}">${fmt(pts)}</div>
       </div>
-      ${p.assente ? `<div class="note-line">Assente nel weekend</div>` : resultsPills(p) + phasesHTML(p.fasi)}
+      ${p.assente && !pts ? `<div class="note-line">Assente nel weekend</div>` : resultsPills(p) + phasesHTML(p.fasi)}
     </div>`;
 }
 
@@ -888,7 +911,8 @@ function viewSquadre(arg) {
             return `<a class="row" href="#/gp/${r}">
               <div class="grow"><div class="name small" style="font-size:14px">R${r} · ${esc(c?.gp || "")}</div>
                 <div class="meta">${x.tit.map((t, i) => x.eff[i] && x.eff[i] !== t
-                  ? `<s>${esc(abbr(t))}</s> → ${esc(abbr(x.eff[i]))}` : esc(abbr(t))).join(" · ")} · 🪑 ${esc(abbr(x.riserva))}</div></div>
+                  ? `<s>${esc(abbr(t))}</s> → ${esc(abbr(x.eff[i]))}` : esc(abbr(t))).join(" · ")}${
+                  x.riserva || !formazioneAuto(S.league.lega) ? ` · 🪑 ${esc(abbr(x.riserva))}` : ""}</div></div>
               <div class="right pts num">${c?.importato ? fmt(x.tot) : "–"}</div></a>`;
           }).join("")}</div>
         </details>` : ""}
@@ -969,6 +993,7 @@ async function viewFormazione() {
   const auth = authGet();
   const cred = { p_player: player.id, p_pin: auth.pin, p_lega: L.lega_id };
   const membri = membriDi(L);
+  const auto = formazioneAuto(L);       // formula A: la formazione non si invia
 
   const { lineup } = nextRaces();
   const now = new Date();
@@ -999,16 +1024,17 @@ async function viewFormazione() {
   view.innerHTML = `
     ${titolo}
     ${asta ? `<p class="page-sub"><b>Asta aperta</b> · dichiara piloti e team presi e i crediti spesi</p>` : ""}
-    ${lineup ? `<p class="page-sub"${asta ? ` style="margin-top:-12px"` : ""}>Round ${lineup.round} · <b>GP ${esc(lineup.gp)}</b> · chiude ${esc(fDateTime(new Date(lineup.deadline)))}</p>` : ""}
+    ${lineup ? `<p class="page-sub"${asta ? ` style="margin-top:-12px"` : ""}>Round ${lineup.round} · <b>GP ${esc(lineup.gp)}</b> · ${
+      auto ? "formazione automatica" : "chiude " + esc(fDateTime(new Date(lineup.deadline)))}</p>` : ""}
     <p class="page-sub" style="margin-top:-12px">Ciao <b>${esc(nick(player.nome))}</b> · <a class="linkbtn" href="#/profilo">Profilo</a> · <button class="linkbtn" id="logout">Esci</button></p>
     ${scegli}
     ${main}
     ${segnalaCard()}
     ${asta ? `<div class="section-title"><span>Rose d'asta inviate · ${esc(L.nome)}</span></div>
       <div class="card" id="asta-list">${listaAsta(asta, membri)}</div>` : ""}
-    ${lineup ? `<div class="section-title"><span>Chi ha già schierato · R${lineup.round}</span></div>
+    ${lineup && !auto ? `<div class="section-title"><span>Chi ha già schierato · R${lineup.round}</span></div>
       <div class="card" id="status-next"><div class="empty">…</div></div>` : ""}
-    ${inCorso ? `<div class="section-title"><span>Formazioni GP ${esc(inCorso.gp)}</span></div>
+    ${inCorso && !auto ? `<div class="section-title"><span>Formazioni GP ${esc(inCorso.gp)}</span></div>
       <div class="card" id="status-now"><div class="empty">…</div></div>` : ""}`;
 
   document.getElementById("logout")?.addEventListener("click", async () => { await esci(); viewFormazione(); });
@@ -1018,11 +1044,12 @@ async function viewFormazione() {
   const stato = (id, rnd, conPiloti) => rpc("lega_lineup_status", { ...cred, p_round: rnd })
     .then((st) => { const el = document.getElementById(id); if (el) el.innerHTML = statusList(st, membri, conPiloti); })
     .catch((e) => { const el = document.getElementById(id); if (el) el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; });
-  if (lineup) stato("status-next", lineup.round, false);
-  if (inCorso) stato("status-now", inCorso.round, true);
+  if (lineup && !auto) stato("status-next", lineup.round, false);
+  if (inCorso && !auto) stato("status-now", inCorso.round, true);
 
   if (asta) editorAsta(player, cred, asta, L);
-  if (lineup) editorFormazione(player, cred, lineup, L, () => stato("status-next", lineup.round, false));
+  if (lineup && auto) squadraAutomatica(cred, lineup, L);
+  else if (lineup) editorFormazione(player, cred, lineup, L, () => stato("status-next", lineup.round, false));
 }
 
 /* accesso con password (formazione, asta, segnalazioni, profilo): nel telefono
@@ -1185,12 +1212,22 @@ async function editorAsta(player, cred, asta, L) {
   const listino = (tipo) => (asta.listino || []).filter((x) => x.tipo === tipo).map((x) => x.nome);
   const listP = listino("pilota"), listT = listino("team");
   // piloti e team esclusivi: quelli dichiarati dagli altri non si possono scegliere
+  // (con le formule B e C un pilota si blocca solo al limite, o mai; il team sempre)
+  const maxP = asta.max_proprietari === undefined ? 1 : asta.max_proprietari;
   const presi = {};
   for (const x of asta.inviate || []) {
     if (x.player_id === player.id) continue;
-    x.piloti.forEach((p) => { presi[p.nome] = x.nome; });
-    if (x.team) presi[x.team] = x.nome;
+    x.piloti.forEach((p) => (presi[p.nome] ||= []).push(x.nome));
+    if (x.team) (presi[x.team] ||= []).push(x.nome);
   }
+  // [bloccato, scritta accanto al nome]
+  const statoPreso = (nome, team) => {
+    const chi = presi[nome] || [], limite = team ? 1 : maxP;
+    if (!chi.length) return [false, ""];
+    if (limite === 1) return [true, ` · preso da ${nick(chi[chi.length - 1])}`];
+    const di = chi.length > 2 ? `${chi.length} giocatori` : chi.map(nick).join(" e ");
+    return [limite != null && chi.length >= limite, ` · già di ${di}${limite ? ` (${chi.length}/${limite})` : ""}`];
+  };
   // scelte correnti: piloti 0..nP-1, poi il team
   const sel = Array.from({ length: nP }, (_, i) => ({
     nome: saved?.piloti?.[i]?.nome || "", prezzo: saved?.piloti?.[i] ? String(saved.piloti[i].prezzo) : "" }));
@@ -1206,9 +1243,9 @@ async function editorAsta(player, cred, asta, L) {
       <select class="input" data-i="${i}" aria-label="${x.team ? "Team" : "Pilota " + (i + 1)}">
         <option value="">${x.team ? "Scegli il team…" : `Scegli il pilota ${i + 1}…`}</option>
         ${lista.map((n) => {
-          const chi = presi[n];
-          return `<option value="${esc(n)}" ${n === x.nome ? "selected" : ""} ${chi || altri.has(n) ? "disabled" : ""}>${esc(n)}${
-            chi ? ` · preso da ${esc(nick(chi))}` : ""}</option>`;
+          const [bloccato, scritta] = statoPreso(n, x.team);
+          return `<option value="${esc(n)}" ${n === x.nome ? "selected" : ""} ${bloccato || altri.has(n) ? "disabled" : ""}>${esc(n)}${
+            esc(scritta)}</option>`;
         }).join("")}
       </select>
       <input class="input cr num" data-i="${i}" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="5"
@@ -1278,6 +1315,42 @@ async function editorAsta(player, cred, asta, L) {
     }
   };
   render();
+}
+
+/* formula A: niente da inviare, si vede la propria squadra (titolari fissi + team) */
+async function squadraAutomatica(cred, lineup, L) {
+  const box = document.getElementById("lineup-box");
+  let rosa = null;
+  try {
+    const r = await rpc("lega_my_lineup", { ...cred, p_round: lineup.round });
+    if (!r.ok) return erroreAccesso(box, r);
+    rosa = r.rosa;
+  } catch (e) {
+    box.innerHTML = `<div class="alert ko">${esc(e.message)}</div>`;
+    return;
+  }
+  if (!rosa || (rosa.piloti || []).length < 2) {
+    box.innerHTML = `<div class="alert info">La tua rosa in <b>${esc(L.nome)}</b> non è ancora valida:
+      dopo l'asta della lega l'admin dell'app la importa, poi la formazione è automatica.</div>`;
+    return;
+  }
+  const seasonP = Object.fromEntries(S.season.piloti.map((p) => [p.nome, p]));
+  box.innerHTML = `
+    <div class="alert ok">✓ <b>Formazione automatica.</b> In ${esc(L.nome)} non serve inviarla: i tuoi piloti e il tuo team sono sempre schierati.</div>
+    ${rosa.piloti.map((p) => {
+      const info = riderInfo(p.nome);
+      return `<div class="pick" style="cursor:default">
+        ${racenum(info.numero)}
+        <div class="grow"><div class="name" style="font-weight:700">${esc(p.nome)}</div>
+          <div class="meta muted small">${esc(info.team)} · ${fmt(seasonP[p.nome]?.tot ?? 0)} pt in stagione</div></div>
+        <span class="role tit">Titolare</span></div>`;
+    }).join("")}
+    ${rosa.team ? `<div class="pick" style="cursor:default;margin-top:8px">
+        <span class="racenum" style="background:${teamColor(rosa.team)};color:#fff">T</span>
+        <div class="grow"><div class="name" style="font-weight:700">${esc(rosa.team)}</div>
+          <div class="meta muted small">Team · sempre schierato</div></div>
+        <span class="role tit">Team</span></div>` : ""}
+    <p class="muted small center" style="margin:10px 0 0">Senza riserva: se un pilota salta la gara restano i punti già fatti nel weekend.</p>`;
 }
 
 async function editorFormazione(player, cred, lineup, L, aggiornaStato) {
@@ -1580,7 +1653,15 @@ function viewRegolamento() {
           <div class="grow">${esc(v.descrizione)}${v.note ? `<small>${esc(v.note)}</small>` : ""}</div>
           <div class="val num ${v.soglia || v.valore == null || typeof v.valore !== "number" ? "" : sign(v.valore)}">
             ${v.valore == null ? "" : typeof v.valore === "number" ? (v.soglia ? fmt(v.valore) : fmtS(v.valore)) : esc(v.valore)}</div>
-        </div>`).join("")}</div>`).join("")}`;
+        </div>`).join("")}</div>`).join("")}
+    <div class="section-title"><span>Rose in base ai giocatori</span></div>
+    <div class="card pad">
+      <div class="formula-opt"><span class="formula-k">≤${SOGLIA_FORMULA}</span>
+        <span class="grow"><b>Fino a ${SOGLIA_FORMULA} giocatori: 3 piloti + team</b><small>Ogni pilota è di un solo giocatore. La formazione si invia per ogni GP: 2 titolari e la riserva.</small></span></div>
+      <p class="muted small" style="margin:14px 0 4px">Da 8 a 11 giocatori l'admin della lega sceglie prima dell'asta una di queste formule:</p>
+      ${Object.keys(FORMULE).map((k) => `<div class="formula-opt ${formulaDi(legaCorrente()) === k ? "on" : ""}">${formulaHTML(k)}</div>`).join("")}
+      <p class="muted small" style="margin:12px 0 0">In tutte il team è sempre di un solo giocatore e il tetto di crediti è lo stesso.</p>
+    </div>`;
 }
 
 /* ============================================================= PROFILO */
@@ -1755,6 +1836,27 @@ async function viewLeghe() {
   const auth = authGet();
   const cred = (l) => ({ p_player: u.id, p_pin: auth.pin, p_lega: l.lega_id });
 
+  // formula: solo con piu' di 7 giocatori (o se e' gia' stata scelta), prima dell'asta
+  const tanti = !!L?.formula && !L.excel && L.membri.length > SOGLIA_FORMULA;
+  const fAtt = formulaDi(L);
+  const manca = tanti && fAtt === "standard";
+  const sceglie = tanti && L.sono_admin && !L.asta_iniziata;
+  const boxFormula = tanti || fAtt !== "standard" ? `
+    <div class="section-title"><span>Formula della lega</span></div>
+    <div class="card pad">
+      <p class="muted small" style="margin:0 0 10px">${sceglie
+        ? `Siete in ${L.membri.length}: con più di ${SOGLIA_FORMULA} giocatori scegli come fare le rose. Si può cambiare finché l'asta non inizia.`
+        : manca ? `Siete in ${L.membri.length}: prima dell'asta l'admin sceglie una di queste formule.`
+        : L.asta_iniziata ? "L'asta è iniziata: la formula non si può più cambiare."
+        : "Formula scelta dall'admin. Può cambiare finché l'asta non inizia."}</p>
+      ${Object.keys(FORMULE).filter((k) => sceglie || manca || k === fAtt).map((k) => sceglie
+        ? `<button type="button" class="formula-opt ${k === fAtt ? "on" : ""}" data-f="${k}" aria-pressed="${k === fAtt}">${formulaHTML(k)}</button>`
+        : `<div class="formula-opt ${k === fAtt ? "on" : ""}">${formulaHTML(k)}</div>`).join("")}
+      <p class="muted small" style="margin:10px 0 0">In tutte il team è sempre di un solo giocatore.</p>
+      ${sceglie ? `<button type="button" class="btn block" id="formula-ok" style="margin-top:12px" disabled>${manca ? "Scegli una formula" : "Formula salvata"}</button>` : ""}
+      <div id="formula-msg"></div>
+    </div>` : "";
+
   const dettaglio = L ? `
     <div class="section-title"><span>${esc(L.nome)}</span></div>
     <div class="card pad">
@@ -1768,14 +1870,16 @@ async function viewLeghe() {
         <div class="grow"><div class="name">${esc(m.nickname || m.nome)}${m.player_id === u.id ? ' <span class="chip accent">tu</span>' : ""}</div>
           <div class="meta">${m.nickname ? esc(m.nome) + " · " : ""}${m.player_id === L.admin ? "admin della lega" : "giocatore"}</div></div>
       </div>`).join("")}</div></div>
+    ${boxFormula}
     ${L.sono_admin && !L.excel ? `
     <div class="section-title"><span>Asta della lega</span></div>
     <div class="card pad">
       <div class="alert ${L.asta_aperta ? "ok" : "info"}">${L.asta_aperta
         ? "<b>Asta aperta</b>: i giocatori dichiarano piloti, team e crediti da <a href=\"#/formazione\">Asta e Formazione</a>."
+        : manca ? "Asta chiusa. Prima di aprirla scegli la formula della lega, qui sopra."
         : "Asta chiusa. Aprila quando avete fatto l'asta: ognuno dichiara la sua rosa dall'app."}</div>
       <div class="notif-btns" style="margin-top:10px">
-        <button type="button" class="btn sm" id="asta-on">${L.asta_aperta ? "Chiudi asta" : "Apri asta"}</button>
+        <button type="button" class="btn sm" id="asta-on" ${manca && !L.asta_aperta ? "disabled" : ""}>${L.asta_aperta ? "Chiudi asta" : "Apri asta"}</button>
         <button type="button" class="btn ghost sm" id="asta-svuota">Svuota rose inviate</button></div>
       <div id="asta-msg"></div>
       <p class="muted small" style="margin:10px 0 0">Dopo l'asta l'admin dell'app rende valide le rose: da lì si schierano le formazioni.</p>
@@ -1809,7 +1913,7 @@ async function viewLeghe() {
         <button class="btn" type="submit">Crea</button></form>
       <div id="crea-msg"></div>
       <p class="muted small" style="margin:10px 0 0">Ne diventi l'admin: inviti gli amici con il codice e apri tu l'asta.
-        Piloti, team e regolamento sono uguali in tutte le leghe.</p></div>
+        Piloti, team e regolamento sono uguali in tutte le leghe. Fino a 11 giocatori: oltre ${SOGLIA_FORMULA} scegli tu come fare le rose.</p></div>
     <button class="btn ghost block" id="logout" style="margin-top:16px">Esci dall'account</button>`;
 
   view.querySelectorAll(".lega-row").forEach((b) => b.addEventListener("click", () => setLega(b.dataset.l, "#/")));
@@ -1853,6 +1957,25 @@ async function viewLeghe() {
     if (!r.ok) { document.getElementById("asta-msg").innerHTML = `<div class="alert ko">${esc(r.errore)}</div>`; return; }
     viewLeghe();
   };
+  // scelta della formula: si tocca, poi si salva
+  let fScelta = fAtt;
+  view.querySelectorAll("button.formula-opt").forEach((b) => b.addEventListener("click", () => {
+    fScelta = b.dataset.f;
+    view.querySelectorAll("button.formula-opt").forEach((x) => {
+      x.classList.toggle("on", x === b);
+      x.setAttribute("aria-pressed", x === b);
+    });
+    const ok = document.getElementById("formula-ok");
+    ok.disabled = fScelta === fAtt;
+    ok.textContent = fScelta === fAtt ? "Formula salvata" : `Scegli la formula ${fScelta}`;
+  }));
+  document.getElementById("formula-ok")?.addEventListener("click", async (e) => {
+    e.target.disabled = true;
+    const r = await rpc("lega_formula_imposta", { ...cred(L), p_formula: fScelta }).catch((err) => ({ ok: false, errore: err.message }));
+    if (r.ok) return viewLeghe();
+    document.getElementById("formula-msg").innerHTML = `<div class="alert ko" style="margin:12px 0 0">${esc(r.errore)}</div>`;
+    e.target.disabled = false;
+  });
   document.getElementById("asta-on")?.addEventListener("click", asta(!L.asta_aperta, false));
   document.getElementById("asta-svuota")?.addEventListener("click", asta(L.asta_aperta, true));
   document.getElementById("esci-lega")?.addEventListener("click", async () => {
